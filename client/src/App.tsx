@@ -13,6 +13,7 @@ import {
   Clock3,
   Computer,
   LayoutDashboard,
+  LogOut,
   Menu,
   Package,
   Plus,
@@ -26,6 +27,14 @@ import {
   XCircle,
 } from "lucide-react";
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  role: "staff" | "borrower";
+  phone: string;
+};
 type Equipment = {
   id: string;
   name: string;
@@ -59,9 +68,14 @@ type Dashboard = {
   recentActivity: { id: string; message: string; at: string }[];
 };
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem("equiptrack-token");
   const r = await fetch(`${API}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || "Request failed.");
@@ -76,6 +90,8 @@ const dateText = (s: string) =>
   });
 export default function App() {
   const [page, setPage] = useState("Dashboard"),
+    [authUser, setAuthUser] = useState<AuthUser | null>(null),
+    [authLoading, setAuthLoading] = useState(true),
     [equipment, setEquipment] = useState<Equipment[]>([]),
     [requests, setRequests] = useState<RequestItem[]>([]),
     [dash, setDash] = useState<Dashboard | null>(null),
@@ -87,6 +103,7 @@ export default function App() {
     [modal, setModal] = useState<"request" | "equipment" | null>(null),
     [saving, setSaving] = useState(false),
     [mobile, setMobile] = useState(false);
+  const isStaff = authUser?.role === "staff";
   const refresh = useCallback(async () => {
     setError("");
     try {
@@ -105,8 +122,19 @@ export default function App() {
     }
   }, []);
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const token = localStorage.getItem("equiptrack-token");
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+    void api<AuthUser>("/auth/me")
+      .then(setAuthUser)
+      .catch(() => localStorage.removeItem("equiptrack-token"))
+      .finally(() => setAuthLoading(false));
+  }, []);
+  useEffect(() => {
+    if (authUser) void refresh();
+  }, [authUser, refresh]);
   async function act(fn: () => Promise<unknown>, message: string) {
     setSaving(true);
     setError("");
@@ -156,10 +184,14 @@ export default function App() {
     [requests, search, filter],
   );
   const nav = [
-    { name: "Dashboard", icon: LayoutDashboard },
-    { name: "Equipment", icon: Package },
-    { name: "Borrowing Requests", icon: ClipboardList },
-    { name: "Reports", icon: Activity },
+    { name: "Dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { name: "Equipment", label: "Equipment", icon: Package },
+    {
+      name: "Borrowing Requests",
+      label: isStaff ? "Borrowing Requests" : "My Requests",
+      icon: ClipboardList,
+    },
+    ...(isStaff ? [{ name: "Reports", label: "Reports", icon: Activity }] : []),
   ];
   function go(p: string) {
     setPage(p);
@@ -167,6 +199,25 @@ export default function App() {
     setFilter("All");
     setMobile(false);
   }
+  async function signOut() {
+    await api("/auth/logout", { method: "POST" }).catch(() => undefined);
+    localStorage.removeItem("equiptrack-token");
+    setAuthUser(null);
+    setPage("Dashboard");
+    setEquipment([]);
+    setRequests([]);
+    setDash(null);
+  }
+  if (authLoading) return <div className="authloading">Checking your session…</div>;
+  if (!authUser)
+    return (
+      <AuthScreen
+        onAuthenticated={(session) => {
+          localStorage.setItem("equiptrack-token", session.token);
+          setAuthUser(session.user);
+        }}
+      />
+    );
   return (
     <div className="shell">
       <aside className={`sidebar ${mobile ? "open" : ""}`}>
@@ -198,33 +249,35 @@ export default function App() {
             onClick={() => go(n.name)}
           >
             <n.icon size={18} />
-            {n.name}
+            {n.label}
             {n.name === "Borrowing Requests" && dash?.pendingRequests ? (
               <em>{dash.pendingRequests}</em>
             ) : null}
           </button>
         ))}
         <div className="sidebottom">
-          <div className="help">
+          {isStaff && <div className="help">
             <ShieldCheck />
             <b>Keep assets accountable</b>
             <p>Track every request, release, and return in one place.</p>
             <button onClick={() => go("Reports")}>
               View reports <ArrowUpRight size={14} />
             </button>
-          </div>
+          </div>}
           <button className="navitem">
             <Settings size={18} />
             Settings
           </button>
           <div className="profile">
-            <span>AD</span>
+            <span>{authUser.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
             <div>
-              <b>System Admin</b>
-              <small>Administrator</small>
+              <b>{authUser.name}</b>
+              <small>{isStaff ? "Staff / Admin" : "Borrower"}</small>
             </div>
-            <ChevronDown size={14} />
           </div>
+          <button className="logout" onClick={() => void signOut()} title="Sign out">
+            <LogOut size={15} /> Sign out
+          </button>
         </div>
       </aside>
       {mobile && <button className="scrim" onClick={() => setMobile(false)} />}
@@ -249,7 +302,7 @@ export default function App() {
               <Bell />
               <i />
             </button>
-            <b className="admin">AD</b>
+            <b className="admin">{authUser.name.slice(0, 1).toUpperCase()}</b>
           </div>
         </header>
         <div className="content">
@@ -274,8 +327,8 @@ export default function App() {
                 title="Equipment dashboard"
                 sub="Monitor equipment, borrowing requests, and inventory activity."
                 eyebrow="OVERVIEW"
-                button="New borrowing request"
-                onClick={() => setModal("request")}
+                button={isStaff ? undefined : "New borrowing request"}
+                onClick={isStaff ? undefined : () => setModal("request")}
               />
               <div className="stats">
                 <Stat
@@ -319,10 +372,17 @@ export default function App() {
                 </section>
                 <section className="panel">
                   <PanelTitle
-                    title="Recent activity"
-                    sub="Latest system updates"
+                    title={isStaff ? "Recent activity" : "Your recent requests"}
+                    sub={isStaff ? "Latest system updates" : "Latest borrowing activity"}
                   />
-                  {dash?.recentActivity?.length ? (
+                  {!isStaff ? (
+                    <RequestTable
+                      rows={requests.slice(0, 5)}
+                      onStatus={status}
+                      saving={saving}
+                      canManage={false}
+                    />
+                  ) : dash?.recentActivity?.length ? (
                     dash.recentActivity.slice(0, 6).map((a) => (
                       <div className="activity" key={a.id}>
                         <span>
@@ -339,7 +399,7 @@ export default function App() {
                   )}
                 </section>
               </div>
-              <section className="panel">
+              {isStaff && <section className="panel">
                 <PanelTitle
                   title="Recent borrowing requests"
                   sub="Review requests and monitor equipment movement"
@@ -350,8 +410,9 @@ export default function App() {
                   rows={requests.slice(0, 5)}
                   onStatus={status}
                   saving={saving}
+                  canManage
                 />
-              </section>
+              </section>}
             </>
           )}
           {page === "Equipment" && (
@@ -360,8 +421,8 @@ export default function App() {
                 title="Equipment inventory"
                 sub="Manage equipment records, quantities, and availability."
                 eyebrow="ASSET CONTROL"
-                button="Add equipment"
-                onClick={() => setModal("equipment")}
+                button={isStaff ? "Add equipment" : undefined}
+                onClick={isStaff ? () => setModal("equipment") : undefined}
               />
               <div className="toolbar">
                 <div className="search">
@@ -393,13 +454,13 @@ export default function App() {
               <section className="panel">
                 <EquipmentTable
                   rows={eqRows}
-                  onDelete={(id) => {
+                  onDelete={isStaff ? (id) => {
                     if (confirm("Delete this equipment record?"))
                       void act(
                         () => api(`/equipment/${id}`, { method: "DELETE" }),
                         "Equipment deleted.",
                       );
-                  }}
+                  } : undefined}
                 />
               </section>
             </>
@@ -408,10 +469,10 @@ export default function App() {
             <>
               <Heading
                 title="Borrowing requests"
-                sub="Approve requests, record equipment releases, and process returns."
-                eyebrow="BORROWING WORKFLOW"
-                button="New request"
-                onClick={() => setModal("request")}
+                sub={isStaff ? "Approve requests, record equipment releases, and process returns." : "Track the status of your equipment requests."}
+                eyebrow={isStaff ? "BORROWING WORKFLOW" : "YOUR BORROWING"}
+                button={isStaff ? undefined : "New request"}
+                onClick={isStaff ? undefined : () => setModal("request")}
               />
               <div className="requestcards">
                 {["All", "Pending", "Borrowed", "Overdue"].map((s) => (
@@ -465,11 +526,12 @@ export default function App() {
                   rows={reqRows}
                   onStatus={status}
                   saving={saving}
+                  canManage={isStaff}
                 />
               </section>
             </>
           )}
-          {page === "Reports" && (
+          {isStaff && page === "Reports" && (
             <>
               <Heading
                 title="Reports overview"
@@ -570,7 +632,7 @@ export default function App() {
           </span>
         </footer>
       </main>
-      {modal && (
+      {modal && (!isStaff || modal === "equipment") && (
         <Modal
           title={
             modal === "request" ? "Create borrowing request" : "Add equipment"
@@ -580,6 +642,7 @@ export default function App() {
           {modal === "request" ? (
             <RequestForm
               equipment={equipment}
+              user={authUser}
               saving={saving}
               cancel={() => setModal(null)}
               submit={(d) =>
@@ -614,6 +677,69 @@ export default function App() {
     </div>
   );
 }
+function AuthScreen({
+  onAuthenticated,
+}: {
+  onAuthenticated: (session: { token: string; user: AuthUser }) => void;
+}) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [form, setForm] = useState({ name: "", email: "", department: "", phone: "", password: "" });
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const session = await api<{ token: string; user: AuthUser }>(
+        mode === "login" ? "/auth/login" : "/auth/register",
+        { method: "POST", body: JSON.stringify(form) },
+      );
+      onAuthenticated(session);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to sign in.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <main className="authscreen">
+      <section className="authpanel">
+        <div className="authbrand">
+          <span><Package size={22} /></span>
+          <div><b>EquipTrack</b><small>ASSET MANAGEMENT</small></div>
+        </div>
+        <p className="autheyebrow">EQUIPMENT SERVICES</p>
+        <h1>{mode === "login" ? "Welcome back" : "Borrower account"}</h1>
+        <p className="authcopy">
+          {mode === "login" ? "Sign in to manage equipment and borrowing requests." : "Create an account to request equipment and track your loans."}
+        </p>
+        <form onSubmit={submit}>
+          {mode === "register" && <>
+            <label>Full name<input required autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+            <label>Department / section<input required value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} /></label>
+          </>}
+          <label>Email address<input required type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+          <label>Password<input required type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "register" ? 10 : undefined} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
+          {error && <p className="autherror">{error}</p>}
+          <button className="primary" disabled={saving}>{saving ? "Please wait…" : mode === "login" ? "Sign in" : "Create borrower account"}</button>
+        </form>
+        <p className="authswitch">
+          {mode === "login" ? "New borrower?" : "Already have an account?"}{" "}
+          <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>
+            {mode === "login" ? "Create an account" : "Sign in"}
+          </button>
+        </p>
+      </section>
+      <div className="authaside">
+        <div className="authaside-mark"><Package /></div>
+        <p>ASSETS, ACCOUNTED FOR</p>
+        <h2>Equipment access, without the guesswork.</h2>
+        <span>Browse what is available. Keep every request and return in view.</span>
+      </div>
+    </main>
+  );
+}
 function Heading({
   title,
   sub,
@@ -624,8 +750,8 @@ function Heading({
   title: string;
   sub: string;
   eyebrow: string;
-  button: string;
-  onClick: () => void;
+  button?: string;
+  onClick?: () => void;
 }) {
   return (
     <div className="heading">
@@ -634,10 +760,9 @@ function Heading({
         <h1>{title}</h1>
         <p>{sub}</p>
       </div>
-      <button className="primary" onClick={onClick}>
-        <Plus size={16} />
-        {button}
-      </button>
+      {button && <button className="primary" onClick={onClick}>
+        <Plus size={16} />{button}
+      </button>}
     </div>
   );
 }
@@ -776,10 +901,12 @@ function RequestTable({
   rows,
   onStatus,
   saving,
+  canManage,
 }: {
   rows: RequestItem[];
   onStatus: (id: string, s: string) => void;
   saving: boolean;
+  canManage: boolean;
 }) {
   if (!rows.length)
     return <Empty text="No borrowing requests match your search." />;
@@ -792,7 +919,7 @@ function RequestTable({
             <th>Equipment</th>
             <th>Borrow period</th>
             <th>Status</th>
-            <th>Actions</th>
+            {canManage && <th>Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -830,7 +957,7 @@ function RequestTable({
                   {r.overdue ? "Overdue" : r.status}
                 </label>
               </td>
-              <td>
+              {canManage && <td>
                 <div className="actions">
                   {r.status === "Pending" && (
                     <>
@@ -874,7 +1001,7 @@ function RequestTable({
                     <span className="dim">—</span>
                   )}
                 </div>
-              </td>
+              </td>}
             </tr>
           ))}
         </tbody>
@@ -915,18 +1042,20 @@ function Modal({
 }
 function RequestForm({
   equipment,
+  user,
   saving,
   cancel,
   submit,
 }: {
   equipment: Equipment[];
+  user: AuthUser;
   saving: boolean;
   cancel: () => void;
   submit: (d: Record<string, unknown>) => void;
 }) {
   const [f, S] = useState({
-    borrower: "",
-    department: "",
+    borrower: user.role === "borrower" ? user.name : "",
+    department: user.role === "borrower" ? user.department : "",
     equipmentId: equipment[0]?.id || "",
     quantity: "1",
     purpose: "",
@@ -956,6 +1085,7 @@ function RequestForm({
           Borrower's full name
           <input
             required
+            readOnly={user.role === "borrower"}
             value={f.borrower}
             onChange={(e) => S({ ...f, borrower: e.target.value })}
             placeholder="e.g. Alex Santos"
@@ -965,6 +1095,7 @@ function RequestForm({
           Department / section
           <input
             required
+            readOnly={user.role === "borrower"}
             value={f.department}
             onChange={(e) => S({ ...f, department: e.target.value })}
             placeholder="e.g. BSIT - 3A"
