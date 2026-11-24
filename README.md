@@ -1,8 +1,21 @@
 # EquipTrack
 
-## Run locally
+## Supabase setup
 
-Install dependencies with `npm run install:all`. Provision the staff account through server environment variables before starting the API:
+The `feature/dynamic-database` branch stores application data in PostgreSQL. Create a Supabase staging project, then add its PostgreSQL connection URI as `DATABASE_URL` in the ignored root `.env` file or in the server environment. Keep the URI private and do not commit it.
+
+Run the schema and seed the five equipment records in the staging database:
+
+```sh
+npm run install:all
+npm run db:migrate --prefix server
+```
+
+The migration is safe to re-run. It does not import data from `server/data/db.json`; the staging project starts with fresh data. Configure `STAFF_EMAIL` and `STAFF_PASSWORD` (at least 10 characters) so the API creates the initial staff account on first startup.
+
+Keep production on `main` and its existing services. To test this branch remotely, use a separate Render staging service set to `feature/dynamic-database` and point only that service at the staging Supabase database.
+
+Provision the staff account through server environment variables before starting the API:
 
 ```sh
 export STAFF_EMAIL="staff@example.edu"
@@ -11,14 +24,16 @@ export STAFF_NAME="Equipment Staff"
 npm run dev
 ```
 
-Then open the Vite URL printed by the client. `STAFF_EMAIL` and `STAFF_PASSWORD` are used to create the staff account on first startup; staff/admin is one role. Borrowers can register from the sign-in screen and cannot select a staff role.
+Then open the Vite URL printed by the client. Staff/admin is one role. Borrowers can register from the sign-in screen and cannot select a staff role.
 
 ## Access roles
 
 - **Staff / Admin:** manage equipment, view all borrowing requests, approve or reject requests, release equipment, process returns, and view reports.
 - **Borrower:** browse equipment, submit borrowing requests, and view only their own requests and dashboard totals.
 
-The API enforces these permissions independently of the client UI. Passwords are stored as salted scrypt hashes. Session tokens expire after 12 hours and are held in server memory, so restarting the API signs users out. Account records are stored in `server/data/db.json` by default. Set `EQUIPTRACK_DATA_DIR` to use another data directory.
+The API enforces these permissions independently of the client UI. Passwords are stored as salted scrypt hashes in PostgreSQL. Session tokens expire after 12 hours and are held in server memory, so restarting the API signs users out. Application records persist in the configured PostgreSQL database.
+
+The migration enables RLS on the application tables and removes direct `anon`/`authenticated` table and sequence grants. The browser must access data through the EquipTrack API; keep `DATABASE_URL` private in the server environment.
 
 ## Resend email testing
 
