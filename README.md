@@ -1,8 +1,50 @@
 # EquipTrack
 
-## Run locally
+## Supabase setup
 
-Install dependencies with `npm run install:all`. Provision the staff account through server environment variables before starting the API:
+The `feature/dynamic-database` branch stores application data in PostgreSQL. Create a Supabase staging project, then add its PostgreSQL connection URI as `DATABASE_URL` in the ignored root `.env` file or in the server environment. Keep the URI private and do not commit it.
+
+Run the schema migrations in order and seed the five equipment records in the staging database:
+
+```sh
+npm run install:all
+npm run db:migrate --prefix server
+```
+
+The schema migration is safe to re-run and seeds five equipment records. It does not copy data from the currently deployed API. Configure `STAFF_EMAIL` and `STAFF_PASSWORD` (at least 10 characters) so the API creates the initial staff account on first startup.
+
+### Import equipment and requests from the deployed API
+
+The one-time importer uses a staff login to read equipment and requests from the legacy API, then writes them to a separately configured target database. It does not import users, notifications, or activity. Imported requests remain staff-visible and are not linked to borrowers' new accounts. Requests without a saved borrower email may need staff follow-up before approval.
+
+The legacy source contains a request whose due date precedes its borrow date. `002_legacy_date_exception.sql` adds a flag so that request's original dates can be preserved without allowing new API requests to use an invalid date order. If `001_initial.sql` has already been run on the production project, run `002_legacy_date_exception.sql` there before importing.
+
+Keep `DATABASE_URL` pointed at the current staging database. Add these entries to the ignored root `.env`, using the production session-pooler URI only for `LEGACY_IMPORT_DATABASE_URL`:
+
+```dotenv
+LEGACY_API_URL="https://equiptrack-api-g4fy.onrender.com/api"
+LEGACY_STAFF_EMAIL="your-production-staff-email"
+LEGACY_STAFF_PASSWORD="your-production-staff-password"
+LEGACY_IMPORT_DATABASE_URL="your-production-session-pooler-URI"
+```
+
+After applying the schema migration to the production Supabase project, first run a dry run. It validates the source and rolls back all database changes:
+
+```sh
+npm run db:import-legacy --prefix server -- --dry-run
+```
+
+Review the counts. When ready, perform the import once:
+
+```sh
+npm run db:import-legacy --prefix server -- --confirm-import
+```
+
+The importer refuses to write unless the target contains only the initial seeded equipment and no requests. It logs counts only, not borrower data. Never point `LEGACY_IMPORT_DATABASE_URL` at staging or share these credentials.
+
+Keep production on `main` and its existing services. To test this branch remotely, use a separate Render staging service set to `feature/dynamic-database` and point only that service at the staging Supabase database.
+
+Provision the staff account through server environment variables before starting the API:
 
 ```sh
 export STAFF_EMAIL="staff@example.edu"
@@ -11,14 +53,16 @@ export STAFF_NAME="Equipment Staff"
 npm run dev
 ```
 
-Then open the Vite URL printed by the client. `STAFF_EMAIL` and `STAFF_PASSWORD` are used to create the staff account on first startup; staff/admin is one role. Borrowers can register from the sign-in screen and cannot select a staff role.
+Then open the Vite URL printed by the client. Staff/admin is one role. Borrowers can register from the sign-in screen and cannot select a staff role.
 
 ## Access roles
 
 - **Staff / Admin:** manage equipment, view all borrowing requests, approve or reject requests, release equipment, process returns, and view reports.
 - **Borrower:** browse equipment, submit borrowing requests, and view only their own requests and dashboard totals.
 
-The API enforces these permissions independently of the client UI. Passwords are stored as salted scrypt hashes. Session tokens expire after 12 hours and are held in server memory, so restarting the API signs users out. Account records are stored in `server/data/db.json` by default. Set `EQUIPTRACK_DATA_DIR` to use another data directory.
+The API enforces these permissions independently of the client UI. Passwords are stored as salted scrypt hashes in PostgreSQL. Session tokens expire after 12 hours and are held in server memory, so restarting the API signs users out. Application records persist in the configured PostgreSQL database.
+
+The migration enables RLS on the application tables and removes direct `anon`/`authenticated` table and sequence grants. The browser must access data through the EquipTrack API; keep `DATABASE_URL` private in the server environment.
 
 ## Resend email testing
 
