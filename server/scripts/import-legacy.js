@@ -120,9 +120,6 @@ function normalizeRequest(item) {
   }
   const borrowDate = normalizeDate(item.borrowDate, "borrow date");
   const dueDate = normalizeDate(item.dueDate, "due date");
-  if (dueDate < borrowDate) {
-    throw new Error("Legacy data has a due date before its borrow date.");
-  }
   return {
     id,
     borrower: requireString(item.borrower, "borrower name"),
@@ -137,6 +134,7 @@ function normalizeRequest(item) {
     purpose: requireString(item.purpose, "request purpose"),
     borrowDate,
     dueDate,
+    legacyDateException: dueDate < borrowDate,
     status,
     createdAt: normalizeTimestamp(item.createdAt, "request creation time"),
     releasedAt: item.releasedAt
@@ -279,8 +277,8 @@ async function importData(client, { equipment, requests }, { dryRun }) {
       `INSERT INTO requests
          (id, borrower, department, borrower_user_id, borrower_email,
           equipment_id, equipment_name, quantity, purpose, borrow_date, due_date,
-          status, created_at, released_at, returned_at)
-       VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          legacy_date_exception, status, created_at, released_at, returned_at)
+       VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         request.id,
         request.borrower,
@@ -292,6 +290,7 @@ async function importData(client, { equipment, requests }, { dryRun }) {
         request.purpose,
         request.borrowDate,
         request.dueDate,
+        request.legacyDateException,
         request.status,
         request.createdAt,
         request.releasedAt,

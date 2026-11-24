@@ -35,13 +35,16 @@ CREATE TABLE IF NOT EXISTS requests (
   quantity INTEGER NOT NULL CHECK (quantity >= 1),
   purpose TEXT NOT NULL,
   borrow_date DATE NOT NULL,
-  due_date DATE NOT NULL CHECK (due_date >= borrow_date),
+  due_date DATE NOT NULL,
+  legacy_date_exception BOOLEAN NOT NULL DEFAULT FALSE,
   status TEXT NOT NULL CHECK (
     status IN ('Pending', 'Approved', 'Rejected', 'Borrowed', 'Returned')
   ),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   released_at TIMESTAMPTZ,
-  returned_at TIMESTAMPTZ
+  returned_at TIMESTAMPTZ,
+  CONSTRAINT requests_due_date_valid_check
+    CHECK (due_date >= borrow_date OR legacy_date_exception)
 );
 
 CREATE INDEX IF NOT EXISTS requests_borrower_user_id_idx

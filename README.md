@@ -4,7 +4,7 @@
 
 The `feature/dynamic-database` branch stores application data in PostgreSQL. Create a Supabase staging project, then add its PostgreSQL connection URI as `DATABASE_URL` in the ignored root `.env` file or in the server environment. Keep the URI private and do not commit it.
 
-Run the schema and seed the five equipment records in the staging database:
+Run the schema migrations in order and seed the five equipment records in the staging database:
 
 ```sh
 npm run install:all
@@ -16,6 +16,8 @@ The schema migration is safe to re-run and seeds five equipment records. It does
 ### Import equipment and requests from the deployed API
 
 The one-time importer uses a staff login to read equipment and requests from the legacy API, then writes them to a separately configured target database. It does not import users, notifications, or activity. Imported requests remain staff-visible and are not linked to borrowers' new accounts. Requests without a saved borrower email may need staff follow-up before approval.
+
+The legacy source contains a request whose due date precedes its borrow date. `002_legacy_date_exception.sql` adds a flag so that request's original dates can be preserved without allowing new API requests to use an invalid date order. If `001_initial.sql` has already been run on the production project, run `002_legacy_date_exception.sql` there before importing.
 
 Keep `DATABASE_URL` pointed at the current staging database. Add these entries to the ignored root `.env`, using the production session-pooler URI only for `LEGACY_IMPORT_DATABASE_URL`:
 
