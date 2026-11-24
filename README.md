@@ -22,7 +22,7 @@ The API enforces these permissions independently of the client UI. Passwords are
 
 ## Resend email testing
 
-EquipTrack uses Resend for confirmation, due-reminder, penalty, and test emails.
+EquipTrack uses Resend for request-approval and release confirmations, due-reminder, penalty, and test emails. Approval sends a notification before equipment is released; release sends a separate confirmation. Staff-created requests must include the borrower's email address.
 
 Configure the ignored root `.env` file:
 
@@ -33,6 +33,8 @@ EMAIL_TEST_ADDRESS="your-verified-email@example.com"
 ```
 
 With a new Resend account, the onboarding sender is for testing and the recipient must satisfy Resend's testing restrictions. For production, verify your domain and set `RESEND_FROM` to an address on that domain.
+
+When `EMAIL_TEST_ADDRESS` is configured, notifications are redirected to that address instead of the borrower. The staff interface identifies this as a test delivery.
 
 To test from a logged-in staff session:
 
@@ -54,3 +56,9 @@ RESEND_TEMPLATE_ID="EquipTrack"
 ```
 
 The template must be published and accept the variable names used by the test payload. Sending a template cannot include `text`, `html`, or `react` alongside it.
+
+Approval emails use plain text unless a separate published approval template is configured. Approval templates receive `BORROWER_NAME`, `ITEM`, and `DUE_DATE`:
+
+```dotenv
+RESEND_APPROVAL_TEMPLATE_ID="EquipTrack Approval"
+```

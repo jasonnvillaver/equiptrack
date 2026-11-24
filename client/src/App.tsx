@@ -48,6 +48,7 @@ type RequestItem = {
   id: string;
   borrower: string;
   department: string;
+  borrowerEmail?: string;
   equipmentId: string;
   equipmentName: string;
   quantity: number;
@@ -57,6 +58,18 @@ type RequestItem = {
   status: string;
   overdue?: boolean;
   createdAt: string;
+};
+type EmailNotification = {
+  status: "sent" | "logged" | "failed" | "skipped";
+  testRecipient: boolean;
+  error?: string;
+};
+type StatusActionResult = {
+  notification?: EmailNotification;
+};
+type Notice = {
+  message: string;
+  kind: "ok" | "err";
 };
 type Dashboard = {
   totalEquipment: number;
@@ -97,7 +110,7 @@ export default function App() {
     [dash, setDash] = useState<Dashboard | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState(""),
+    [notice, setNotice] = useState<Notice | null>(null),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("All"),
     [modal, setModal] = useState<"request" | "equipment" | null>(null),
@@ -135,14 +148,21 @@ export default function App() {
   useEffect(() => {
     if (authUser) void refresh();
   }, [authUser, refresh]);
-  async function act(fn: () => Promise<unknown>, message: string) {
+  async function act<T>(
+    fn: () => Promise<T>,
+    message: string | ((result: T) => Notice),
+  ) {
     setSaving(true);
     setError("");
     try {
-      await fn();
+      const result = await fn();
       await refresh();
-      setNotice(message);
-      window.setTimeout(() => setNotice(""), 3500);
+      setNotice(
+        typeof message === "function"
+          ? message(result)
+          : { message, kind: "ok" },
+      );
+      window.setTimeout(() => setNotice(null), 3500);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed.");
     } finally {
@@ -152,11 +172,35 @@ export default function App() {
   async function status(id: string, s: string) {
     await act(
       () =>
-        api(`/requests/${id}/status`, {
+        api<StatusActionResult>(`/requests/${id}/status`, {
           method: "PATCH",
           body: JSON.stringify({ status: s }),
         }),
-      `${id} updated to ${s}.`,
+      (result) => {
+        const notification = result.notification;
+        if (s !== "Approved" || !notification)
+          return { message: `${id} updated to ${s}.`, kind: "ok" };
+        if (notification.status === "sent") {
+          return notification.testRecipient
+            ? {
+                message: `${id} approved. Email was sent to the configured test address, not the borrower.`,
+                kind: "err",
+              }
+            : {
+                message: `${id} approved and the email was sent to the borrower.`,
+                kind: "ok",
+              };
+        }
+        if (notification.status === "logged")
+          return {
+            message: `${id} approved, but the email was only logged locally and was not delivered.`,
+            kind: "err",
+          };
+        return {
+          message: `${id} approved, but the email failed${notification.error ? `: ${notification.error}` : "."}`,
+          kind: "err",
+        };
+      },
     );
   }
   const eqRows = useMemo(
@@ -328,10 +372,10 @@ export default function App() {
             </div>
           )}
           {notice && (
-            <div className="alert ok">
-              <CheckCircle2 />
-              {notice}
-              <button onClick={() => setNotice("")}>×</button>
+            <div className={`alert ${notice.kind}`}>
+              {notice.kind === "ok" ? <CheckCircle2 /> : <XCircle />}
+              {notice.message}
+              <button onClick={() => setNotice(null)}>×</button>
             </div>
           )}
           {loading && <div className="loading">Loading system data…</div>}
@@ -1158,6 +1202,7 @@ function RequestForm({
   const [f, S] = useState({
     borrower: user.role === "borrower" ? user.name : "",
     department: user.role === "borrower" ? user.department : "",
+    borrowerEmail: user.role === "borrower" ? user.email : "",
     equipmentId: equipment[0]?.id || "",
     quantity: "1",
     purpose: "",
@@ -1203,6 +1248,19 @@ function RequestForm({
             placeholder="e.g. BSIT - 3A"
           />
         </label>
+        {user.role === "staff" && (
+          <label className="span2">
+            Borrower's email address
+            <input
+              required
+              type="email"
+              autoComplete="email"
+              value={f.borrowerEmail}
+              onChange={(e) => S({ ...f, borrowerEmail: e.target.value })}
+              placeholder="borrower@example.com"
+            />
+          </label>
+        )}
         <label className="span2">
           Equipment
           <select

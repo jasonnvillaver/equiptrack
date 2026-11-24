@@ -31,6 +31,7 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM =
   process.env.RESEND_FROM || "EquipTrack <onboarding@resend.dev>";
 const RESEND_TEMPLATE_ID = process.env.RESEND_TEMPLATE_ID;
+const RESEND_APPROVAL_TEMPLATE_ID = process.env.RESEND_APPROVAL_TEMPLATE_ID;
 const EMAIL_TEST_ADDRESS = process.env.EMAIL_TEST_ADDRESS;
 app.use(cors());
 app.use(express.json());
@@ -229,6 +230,7 @@ async function sendEmail(
   requestId,
   type,
   templateVariables,
+  templateId = RESEND_TEMPLATE_ID,
 ) {
   const recipient = EMAIL_TEST_ADDRESS || to;
   const entry = {
@@ -253,13 +255,13 @@ async function sendEmail(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(
-          RESEND_TEMPLATE_ID
+          templateId
             ? {
                 from: RESEND_FROM,
                 to: [recipient],
                 subject,
                 template: {
-                  id: RESEND_TEMPLATE_ID,
+                  id: templateId,
                   variables: templateVariables || {},
                 },
               }
@@ -476,20 +478,31 @@ app.post("/api/requests", (req, res) => {
   const {
     borrower,
     department,
+    borrowerEmail,
     equipmentId,
     quantity,
     purpose,
     borrowDate,
     dueDate,
   } = req.body;
+  const staffBorrowerEmail =
+    typeof borrowerEmail === "string" ? borrowerEmail.trim() : "";
   if (
-    (req.user.role === "staff" && (!borrower?.trim() || !department?.trim())) ||
+    (req.user.role === "staff" &&
+      (!borrower?.trim() || !department?.trim() || !staffBorrowerEmail)) ||
     !equipmentId ||
     !purpose?.trim() ||
     !borrowDate ||
     !dueDate
   )
     return res.status(400).json({ error: "Complete all request fields." });
+  if (
+    req.user.role === "staff" &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(staffBorrowerEmail)
+  )
+    return res
+      .status(400)
+      .json({ error: "Enter a valid borrower email address." });
   if (dueDate < borrowDate)
     return res
       .status(400)
@@ -512,6 +525,9 @@ app.post("/api/requests", (req, res) => {
     department:
       req.user.role === "borrower" ? req.user.department : department?.trim(),
     borrowerUserId: req.user.role === "borrower" ? req.user.id : null,
+    ...(req.user.role === "staff"
+      ? { borrowerEmail: staffBorrowerEmail.toLowerCase() }
+      : {}),
     equipmentId,
     equipmentName: e.name,
     quantity: qty,
@@ -535,17 +551,38 @@ app.patch("/api/requests/:id/status", requireStaff, async (req, res) => {
     r = d.requests.find((x) => x.id === req.params.id);
   if (!r) return res.status(404).json({ error: "Request not found." });
   const e = d.equipment.find((x) => x.id === r.equipmentId);
+  let approvalNotification;
   if (["Approved", "Rejected"].includes(status)) {
     if (r.status !== "Pending")
       return res
         .status(400)
         .json({ error: "Only pending requests can be approved or rejected." });
     if (status === "Approved") {
+      const borrower = d.users.find((user) => user.id === r.borrowerUserId);
+      const borrowerEmail = r.borrowerEmail || borrower?.email;
+      if (!borrowerEmail)
+        return res.status(400).json({
+          error: "A borrower email address is required before approval.",
+        });
       if (!e || e.available < r.quantity)
         return res
           .status(400)
           .json({ error: "Not enough inventory to approve." });
       e.available -= r.quantity;
+      approvalNotification = await sendEmail(
+        borrowerEmail,
+        "EquipTrack Notification: Request Approved",
+        `Good news, ${r.borrower}: your request for ${r.quantity} × ${r.equipmentName} has been approved. Please wait for the equipment to be released. Due date: ${r.dueDate}.`,
+        d,
+        r.id,
+        "approval",
+        {
+          BORROWER_NAME: r.borrower,
+          ITEM: r.equipmentName,
+          DUE_DATE: r.dueDate,
+        },
+        RESEND_APPROVAL_TEMPLATE_ID || null,
+      );
     }
     r.status = status;
   } else if (status === "Borrowed") {
@@ -557,7 +594,7 @@ app.patch("/api/requests/:id/status", requireStaff, async (req, res) => {
     r.releasedAt = new Date().toISOString();
     const borrower = d.users.find((user) => user.id === r.borrowerUserId);
     await sendEmail(
-      borrower?.email,
+      r.borrowerEmail || borrower?.email,
       "EquipTrack Notification: Borrowed Equipment",
       `Confirmation: ${r.borrower}, you borrowed ${r.quantity} × ${r.equipmentName}. Due date: ${r.dueDate}. Please return it on time.`,
       d,
@@ -575,7 +612,17 @@ app.patch("/api/requests/:id/status", requireStaff, async (req, res) => {
   }
   log(d, `${r.id} status changed to ${status}`);
   writeDb(d);
-  res.json({ ...r, overdue: overdue(r) });
+  res.json({
+    ...r,
+    overdue: overdue(r),
+    ...(approvalNotification && {
+      notification: {
+        status: approvalNotification.status,
+        testRecipient: Boolean(EMAIL_TEST_ADDRESS),
+        error: approvalNotification.error,
+      },
+    }),
+  });
 });
 app.get("/api/notifications", requireStaff, (req, res) =>
   res.json(readDb().smsLog || []),
