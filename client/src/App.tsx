@@ -208,7 +208,8 @@ export default function App() {
     setRequests([]);
     setDash(null);
   }
-  if (authLoading) return <div className="authloading">Checking your session…</div>;
+  if (authLoading)
+    return <div className="authloading">Checking your session…</div>;
   if (!authUser)
     return (
       <AuthScreen
@@ -256,26 +257,39 @@ export default function App() {
           </button>
         ))}
         <div className="sidebottom">
-          {isStaff && <div className="help">
-            <ShieldCheck />
-            <b>Keep assets accountable</b>
-            <p>Track every request, release, and return in one place.</p>
-            <button onClick={() => go("Reports")}>
-              View reports <ArrowUpRight size={14} />
-            </button>
-          </div>}
+          {isStaff && (
+            <div className="help">
+              <ShieldCheck />
+              <b>Keep assets accountable</b>
+              <p>Track every request, release, and return in one place.</p>
+              <button onClick={() => go("Reports")}>
+                View reports <ArrowUpRight size={14} />
+              </button>
+            </div>
+          )}
           <button className="navitem">
             <Settings size={18} />
             Settings
           </button>
           <div className="profile">
-            <span>{authUser.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
+            <span>
+              {authUser.name
+                .split(" ")
+                .map((part) => part[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase()}
+            </span>
             <div>
               <b>{authUser.name}</b>
               <small>{isStaff ? "Staff / Admin" : "Borrower"}</small>
             </div>
           </div>
-          <button className="logout" onClick={() => void signOut()} title="Sign out">
+          <button
+            className="logout"
+            onClick={() => void signOut()}
+            title="Sign out"
+          >
             <LogOut size={15} /> Sign out
           </button>
         </div>
@@ -373,7 +387,11 @@ export default function App() {
                 <section className="panel">
                   <PanelTitle
                     title={isStaff ? "Recent activity" : "Your recent requests"}
-                    sub={isStaff ? "Latest system updates" : "Latest borrowing activity"}
+                    sub={
+                      isStaff
+                        ? "Latest system updates"
+                        : "Latest borrowing activity"
+                    }
                   />
                   {!isStaff ? (
                     <RequestTable
@@ -399,20 +417,22 @@ export default function App() {
                   )}
                 </section>
               </div>
-              {isStaff && <section className="panel">
-                <PanelTitle
-                  title="Recent borrowing requests"
-                  sub="Review requests and monitor equipment movement"
-                  action="View requests"
-                  click={() => go("Borrowing Requests")}
-                />
-                <RequestTable
-                  rows={requests.slice(0, 5)}
-                  onStatus={status}
-                  saving={saving}
-                  canManage
-                />
-              </section>}
+              {isStaff && (
+                <section className="panel">
+                  <PanelTitle
+                    title="Recent borrowing requests"
+                    sub="Review requests and monitor equipment movement"
+                    action="View requests"
+                    click={() => go("Borrowing Requests")}
+                  />
+                  <RequestTable
+                    rows={requests.slice(0, 5)}
+                    onStatus={status}
+                    saving={saving}
+                    canManage
+                  />
+                </section>
+              )}
             </>
           )}
           {page === "Equipment" && (
@@ -454,13 +474,18 @@ export default function App() {
               <section className="panel">
                 <EquipmentTable
                   rows={eqRows}
-                  onDelete={isStaff ? (id) => {
-                    if (confirm("Delete this equipment record?"))
-                      void act(
-                        () => api(`/equipment/${id}`, { method: "DELETE" }),
-                        "Equipment deleted.",
-                      );
-                  } : undefined}
+                  onDelete={
+                    isStaff
+                      ? (id) => {
+                          if (confirm("Delete this equipment record?"))
+                            void act(
+                              () =>
+                                api(`/equipment/${id}`, { method: "DELETE" }),
+                              "Equipment deleted.",
+                            );
+                        }
+                      : undefined
+                  }
                 />
               </section>
             </>
@@ -469,7 +494,11 @@ export default function App() {
             <>
               <Heading
                 title="Borrowing requests"
-                sub={isStaff ? "Approve requests, record equipment releases, and process returns." : "Track the status of your equipment requests."}
+                sub={
+                  isStaff
+                    ? "Approve requests, record equipment releases, and process returns."
+                    : "Track the status of your equipment requests."
+                }
                 eyebrow={isStaff ? "BORROWING WORKFLOW" : "YOUR BORROWING"}
                 button={isStaff ? undefined : "New request"}
                 onClick={isStaff ? undefined : () => setModal("request")}
@@ -683,7 +712,13 @@ function AuthScreen({
   onAuthenticated: (session: { token: string; user: AuthUser }) => void;
 }) {
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [form, setForm] = useState({ name: "", email: "", department: "", phone: "", password: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    department: "",
+    phone: "",
+    password: "",
+  });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   async function submit(event: React.FormEvent) {
@@ -706,36 +741,98 @@ function AuthScreen({
     <main className="authscreen">
       <section className="authpanel">
         <div className="authbrand">
-          <span><Package size={22} /></span>
-          <div><b>EquipTrack</b><small>ASSET MANAGEMENT</small></div>
+          <span>
+            <Package size={22} />
+          </span>
+          <div>
+            <b>EquipTrack</b>
+            <small>ASSET MANAGEMENT</small>
+          </div>
         </div>
         <p className="autheyebrow">EQUIPMENT SERVICES</p>
         <h1>{mode === "login" ? "Welcome back" : "Borrower account"}</h1>
         <p className="authcopy">
-          {mode === "login" ? "Sign in to manage equipment and borrowing requests." : "Create an account to request equipment and track your loans."}
+          {mode === "login"
+            ? "Sign in to manage equipment and borrowing requests."
+            : "Create an account to request equipment and track your loans."}
         </p>
         <form onSubmit={submit}>
-          {mode === "register" && <>
-            <label>Full name<input required autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-            <label>Department / section<input required value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} /></label>
-          </>}
-          <label>Email address<input required type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-          <label>Password<input required type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "register" ? 10 : undefined} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
+          {mode === "register" && (
+            <>
+              <label>
+                Full name
+                <input
+                  required
+                  autoComplete="name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </label>
+              <label>
+                Department / section
+                <input
+                  required
+                  value={form.department}
+                  onChange={(e) =>
+                    setForm({ ...form, department: e.target.value })
+                  }
+                />
+              </label>
+            </>
+          )}
+          <label>
+            Email address
+            <input
+              required
+              type="email"
+              autoComplete="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </label>
+          <label>
+            Password
+            <input
+              required
+              type="password"
+              autoComplete={
+                mode === "login" ? "current-password" : "new-password"
+              }
+              minLength={mode === "register" ? 10 : undefined}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+          </label>
           {error && <p className="autherror">{error}</p>}
-          <button className="primary" disabled={saving}>{saving ? "Please wait…" : mode === "login" ? "Sign in" : "Create borrower account"}</button>
+          <button className="primary" disabled={saving}>
+            {saving
+              ? "Please wait…"
+              : mode === "login"
+                ? "Sign in"
+                : "Create borrower account"}
+          </button>
         </form>
         <p className="authswitch">
           {mode === "login" ? "New borrower?" : "Already have an account?"}{" "}
-          <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>
+          <button
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login");
+              setError("");
+            }}
+          >
             {mode === "login" ? "Create an account" : "Sign in"}
           </button>
         </p>
       </section>
       <div className="authaside">
-        <div className="authaside-mark"><Package /></div>
+        <div className="authaside-mark">
+          <Package />
+        </div>
         <p>ASSETS, ACCOUNTED FOR</p>
         <h2>Equipment access, without the guesswork.</h2>
-        <span>Browse what is available. Keep every request and return in view.</span>
+        <span>
+          Browse what is available. Keep every request and return in view.
+        </span>
       </div>
     </main>
   );
@@ -760,9 +857,12 @@ function Heading({
         <h1>{title}</h1>
         <p>{sub}</p>
       </div>
-      {button && <button className="primary" onClick={onClick}>
-        <Plus size={16} />{button}
-      </button>}
+      {button && (
+        <button className="primary" onClick={onClick}>
+          <Plus size={16} />
+          {button}
+        </button>
+      )}
     </div>
   );
 }
@@ -957,51 +1057,53 @@ function RequestTable({
                   {r.overdue ? "Overdue" : r.status}
                 </label>
               </td>
-              {canManage && <td>
-                <div className="actions">
-                  {r.status === "Pending" && (
-                    <>
+              {canManage && (
+                <td>
+                  <div className="actions">
+                    {r.status === "Pending" && (
+                      <>
+                        <button
+                          disabled={saving}
+                          className="approve"
+                          onClick={() => onStatus(r.id, "Approved")}
+                          title="Approve"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          disabled={saving}
+                          className="reject"
+                          onClick={() => onStatus(r.id, "Rejected")}
+                          title="Reject"
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    )}
+                    {r.status === "Approved" && (
+                      <button
+                        disabled={saving}
+                        className="release"
+                        onClick={() => onStatus(r.id, "Borrowed")}
+                      >
+                        <ArrowDownToLine size={14} /> Release
+                      </button>
+                    )}
+                    {r.status === "Borrowed" && (
                       <button
                         disabled={saving}
                         className="approve"
-                        onClick={() => onStatus(r.id, "Approved")}
-                        title="Approve"
+                        onClick={() => onStatus(r.id, "Returned")}
                       >
-                        <Check size={14} />
+                        <Check size={14} /> Return
                       </button>
-                      <button
-                        disabled={saving}
-                        className="reject"
-                        onClick={() => onStatus(r.id, "Rejected")}
-                        title="Reject"
-                      >
-                        <X size={14} />
-                      </button>
-                    </>
-                  )}
-                  {r.status === "Approved" && (
-                    <button
-                      disabled={saving}
-                      className="release"
-                      onClick={() => onStatus(r.id, "Borrowed")}
-                    >
-                      <ArrowDownToLine size={14} /> Release
-                    </button>
-                  )}
-                  {r.status === "Borrowed" && (
-                    <button
-                      disabled={saving}
-                      className="approve"
-                      onClick={() => onStatus(r.id, "Returned")}
-                    >
-                      <Check size={14} /> Return
-                    </button>
-                  )}
-                  {["Returned", "Rejected"].includes(r.status) && (
-                    <span className="dim">—</span>
-                  )}
-                </div>
-              </td>}
+                    )}
+                    {["Returned", "Rejected"].includes(r.status) && (
+                      <span className="dim">—</span>
+                    )}
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

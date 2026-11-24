@@ -28,7 +28,8 @@ const dataDir = path.resolve(
 const dataFile = path.join(dataDir, "db.json");
 const sessions = new Map();
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM = process.env.RESEND_FROM || "EquipTrack <onboarding@resend.dev>";
+const RESEND_FROM =
+  process.env.RESEND_FROM || "EquipTrack <onboarding@resend.dev>";
 const RESEND_TEMPLATE_ID = process.env.RESEND_TEMPLATE_ID;
 const EMAIL_TEST_ADDRESS = process.env.EMAIL_TEST_ADDRESS;
 app.use(cors());
@@ -116,12 +117,22 @@ const seed = {
 };
 function ensureDb() {
   fs.mkdirSync(dataDir, { recursive: true });
-  if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify(seed, null, 2));
+  if (!fs.existsSync(dataFile))
+    fs.writeFileSync(dataFile, JSON.stringify(seed, null, 2));
   const db = JSON.parse(fs.readFileSync(dataFile, "utf8"));
   let changed = false;
-  if (!Array.isArray(db.users)) { db.users = []; changed = true; }
-  if (!Array.isArray(db.smsLog)) { db.smsLog = []; changed = true; }
-  if (!Array.isArray(db.activity)) { db.activity = []; changed = true; }
+  if (!Array.isArray(db.users)) {
+    db.users = [];
+    changed = true;
+  }
+  if (!Array.isArray(db.smsLog)) {
+    db.smsLog = [];
+    changed = true;
+  }
+  if (!Array.isArray(db.activity)) {
+    db.activity = [];
+    changed = true;
+  }
   if (changed) fs.writeFileSync(dataFile, JSON.stringify(db, null, 2));
 }
 function readDb() {
@@ -164,11 +175,21 @@ function passwordMatches(password, storedHash) {
   return expected.length === actual.length && timingSafeEqual(actual, expected);
 }
 function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, department: user.department, role: user.role, phone: user.phone || "" };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    department: user.department,
+    role: user.role,
+    phone: user.phone || "",
+  };
 }
 function createSession(user) {
   const token = randomBytes(32).toString("hex");
-  sessions.set(token, { userId: user.id, expiresAt: Date.now() + 12 * 60 * 60 * 1000 });
+  sessions.set(token, {
+    userId: user.id,
+    expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+  });
   return { token, user: publicUser(user) };
 }
 function requireAuth(req, res, next) {
@@ -179,12 +200,14 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: "Please sign in to continue." });
   }
   const user = readDb().users.find((item) => item.id === session.userId);
-  if (!user) return res.status(401).json({ error: "Please sign in to continue." });
+  if (!user)
+    return res.status(401).json({ error: "Please sign in to continue." });
   req.user = user;
   next();
 }
 function requireStaff(req, res, next) {
-  if (req.user.role !== "staff") return res.status(403).json({ error: "Staff access is required." });
+  if (req.user.role !== "staff")
+    return res.status(403).json({ error: "Staff access is required." });
   next();
 }
 
@@ -192,14 +215,32 @@ function normalizePhoneNumber(phone) {
   const digits = String(phone || "").replace(/[^0-9]/g, "");
   if (!digits) return "";
   if (digits.startsWith("63") && digits.length >= 12) return `+${digits}`;
-  if (digits.startsWith("09") && digits.length === 11) return `+63${digits.slice(1)}`;
+  if (digits.startsWith("09") && digits.length === 11)
+    return `+63${digits.slice(1)}`;
   if (digits.startsWith("9") && digits.length === 10) return `+63${digits}`;
   return digits.startsWith("+") ? `+${digits}` : `+${digits}`;
 }
 
-async function sendEmail(to, subject, text, db, requestId, type, templateVariables) {
+async function sendEmail(
+  to,
+  subject,
+  text,
+  db,
+  requestId,
+  type,
+  templateVariables,
+) {
   const recipient = EMAIL_TEST_ADDRESS || to;
-  const entry = { id: randomUUID(), requestId, type, email: recipient || null, subject, text, sentAt: new Date().toISOString(), status: "skipped" };
+  const entry = {
+    id: randomUUID(),
+    requestId,
+    type,
+    email: recipient || null,
+    subject,
+    text,
+    sentAt: new Date().toISOString(),
+    status: "skipped",
+  };
   if (!recipient) {
     entry.status = "failed";
     entry.error = "Borrower email address is missing.";
@@ -217,18 +258,23 @@ async function sendEmail(to, subject, text, db, requestId, type, templateVariabl
                 from: RESEND_FROM,
                 to: [recipient],
                 subject,
-                template: { id: RESEND_TEMPLATE_ID, variables: templateVariables || {} },
+                template: {
+                  id: RESEND_TEMPLATE_ID,
+                  variables: templateVariables || {},
+                },
               }
             : { from: RESEND_FROM, to: [recipient], subject, text },
         ),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.message || `Resend returned ${response.status}`);
+      if (!response.ok)
+        throw new Error(result.message || `Resend returned ${response.status}`);
       entry.status = "sent";
       entry.providerId = result.id || null;
     } catch (error) {
       entry.status = "failed";
-      entry.error = error instanceof Error ? error.message : "Email delivery failed.";
+      entry.error =
+        error instanceof Error ? error.message : "Email delivery failed.";
     }
   } else {
     entry.status = "logged";
@@ -243,15 +289,41 @@ async function processSmsNotifications() {
   db.smsLog ||= [];
   for (const request of db.requests) {
     if (request.status !== "Borrowed") continue;
-    const borrower = db.users.find((user) => user.id === request.borrowerUserId);
-    const alreadySent = (type) => db.smsLog.some((item) => item.requestId === request.id && item.type === type);
+    const borrower = db.users.find(
+      (user) => user.id === request.borrowerUserId,
+    );
+    const alreadySent = (type) =>
+      db.smsLog.some(
+        (item) => item.requestId === request.id && item.type === type,
+      );
     const due = new Date(`${request.dueDate}T23:59:59`);
     const hoursUntilDue = (due.getTime() - Date.now()) / 3600000;
-    if (hoursUntilDue > 0 && hoursUntilDue <= 24 && !alreadySent("due-reminder")) {
-      await sendEmail(borrower?.email, "EquipTrack Notification: Due Reminder", `Reminder: ${request.borrower}, ${request.quantity} × ${request.equipmentName} is due on ${request.dueDate}. Please return it on time.`, db, request.id, "due-reminder");
+    if (
+      hoursUntilDue > 0 &&
+      hoursUntilDue <= 24 &&
+      !alreadySent("due-reminder")
+    ) {
+      await sendEmail(
+        borrower?.email,
+        "EquipTrack Notification: Due Reminder",
+        `Reminder: ${request.borrower}, ${request.quantity} × ${request.equipmentName} is due on ${request.dueDate}. Please return it on time.`,
+        db,
+        request.id,
+        "due-reminder",
+      );
     }
-    if (new Date().toISOString().slice(0, 10) > request.dueDate && !alreadySent("penalty")) {
-      await sendEmail(borrower?.email, "EquipTrack Notification: Penalty Notice", `Penalty notice: ${request.borrower}, ${request.equipmentName} was not returned after ${request.dueDate}. Penalty is 20 PHP per day. If overdue for more than 3 days, the department may impose further sanctions.`, db, request.id, "penalty");
+    if (
+      new Date().toISOString().slice(0, 10) > request.dueDate &&
+      !alreadySent("penalty")
+    ) {
+      await sendEmail(
+        borrower?.email,
+        "EquipTrack Notification: Penalty Notice",
+        `Penalty notice: ${request.borrower}, ${request.equipmentName} was not returned after ${request.dueDate}. Penalty is 20 PHP per day. If overdue for more than 3 days, the department may impose further sanctions.`,
+        db,
+        request.id,
+        "penalty",
+      );
     }
   }
   writeDb(db);
@@ -259,45 +331,73 @@ async function processSmsNotifications() {
 
 app.post("/api/auth/register", (req, res) => {
   const { name, email, department, password } = req.body;
-  if (!name?.trim() || !email?.trim() || !department?.trim() || typeof password !== "string" || password.length < 10)
-    return res.status(400).json({ error: "Complete all fields. Passwords must be at least 10 characters." });
+  if (
+    !name?.trim() ||
+    !email?.trim() ||
+    !department?.trim() ||
+    typeof password !== "string" ||
+    password.length < 10
+  )
+    return res.status(400).json({
+      error: "Complete all fields. Passwords must be at least 10 characters.",
+    });
   const d = readDb();
   const normalizedEmail = email.trim().toLowerCase();
-  if (d.users.some((user) => user.email === normalizedEmail)) return res.status(409).json({ error: "An account with that email already exists." });
-  const user = { id: randomUUID(), name: name.trim(), email: normalizedEmail, department: department.trim(), role: "borrower", passwordHash: makePasswordHash(password) };
-  d.users.push(user); writeDb(d); res.status(201).json(createSession(user));
+  if (d.users.some((user) => user.email === normalizedEmail))
+    return res
+      .status(409)
+      .json({ error: "An account with that email already exists." });
+  const user = {
+    id: randomUUID(),
+    name: name.trim(),
+    email: normalizedEmail,
+    department: department.trim(),
+    role: "borrower",
+    passwordHash: makePasswordHash(password),
+  };
+  d.users.push(user);
+  writeDb(d);
+  res.status(201).json(createSession(user));
 });
 app.post("/api/auth/login", (req, res) => {
   const email = req.body.email?.trim().toLowerCase();
   const { password } = req.body;
-  if (!email || typeof password !== "string") return res.status(400).json({ error: "Enter your email and password." });
+  if (!email || typeof password !== "string")
+    return res.status(400).json({ error: "Enter your email and password." });
   const user = readDb().users.find((item) => item.email === email);
-  if (!user || !passwordMatches(password, user.passwordHash)) return res.status(401).json({ error: "Email or password is incorrect." });
+  if (!user || !passwordMatches(password, user.passwordHash))
+    return res.status(401).json({ error: "Email or password is incorrect." });
   res.json(createSession(user));
 });
 app.use("/api", (req, res, next) => {
-  if (["/health", "/auth/register", "/auth/login"].includes(req.path)) return next();
+  if (["/health", "/auth/register", "/auth/login"].includes(req.path))
+    return next();
   requireAuth(req, res, next);
 });
 app.get("/api/auth/me", (req, res) => res.json(publicUser(req.user)));
 app.post("/api/auth/logout", (req, res) => {
   const token = req.get("Authorization")?.replace(/^Bearer\s+/i, "");
-  if (token) sessions.delete(token); res.json({ ok: true });
+  if (token) sessions.delete(token);
+  res.json({ ok: true });
 });
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "EquipTrack API" }));
+app.get("/api/health", (_req, res) =>
+  res.json({ ok: true, service: "EquipTrack API" }),
+);
 app.get("/api/dashboard", (req, res) => {
   const d = readDb();
-  const visibleRequests = req.user.role === "staff"
-    ? d.requests
-    : d.requests.filter((r) => r.borrowerUserId === req.user.id);
+  const visibleRequests =
+    req.user.role === "staff"
+      ? d.requests
+      : d.requests.filter((r) => r.borrowerUserId === req.user.id);
   const borrowed = visibleRequests.filter((r) => r.status === "Borrowed");
   res.json({
     totalEquipment: d.equipment.reduce((s, e) => s + e.total, 0),
     availableEquipment: d.equipment.reduce((s, e) => s + e.available, 0),
     borrowedEquipment: borrowed.reduce((s, r) => s + r.quantity, 0),
     overdueRequests: visibleRequests.filter(overdue).length,
-    pendingRequests: visibleRequests.filter((r) => r.status === "Pending").length,
+    pendingRequests: visibleRequests.filter((r) => r.status === "Pending")
+      .length,
     equipmentCount: d.equipment.length,
     recentActivity: req.user.role === "staff" ? d.activity : [],
   });
@@ -364,9 +464,13 @@ app.delete("/api/equipment/:id", requireStaff, (req, res) => {
   res.json({ ok: true });
 });
 app.get("/api/requests", (req, res) =>
-  res.json(readDb().requests
-    .filter((r) => req.user.role === "staff" || r.borrowerUserId === req.user.id)
-    .map((r) => ({ ...r, overdue: overdue(r) }))),
+  res.json(
+    readDb()
+      .requests.filter(
+        (r) => req.user.role === "staff" || r.borrowerUserId === req.user.id,
+      )
+      .map((r) => ({ ...r, overdue: overdue(r) })),
+  ),
 );
 app.post("/api/requests", (req, res) => {
   const {
@@ -405,7 +509,8 @@ app.post("/api/requests", (req, res) => {
   const r = {
     id: newId("BR", d.requests, 2000),
     borrower: req.user.role === "borrower" ? req.user.name : borrower?.trim(),
-    department: req.user.role === "borrower" ? req.user.department : department?.trim(),
+    department:
+      req.user.role === "borrower" ? req.user.department : department?.trim(),
     borrowerUserId: req.user.role === "borrower" ? req.user.id : null,
     equipmentId,
     equipmentName: e.name,
@@ -451,7 +556,14 @@ app.patch("/api/requests/:id/status", requireStaff, async (req, res) => {
     r.status = "Borrowed";
     r.releasedAt = new Date().toISOString();
     const borrower = d.users.find((user) => user.id === r.borrowerUserId);
-    await sendEmail(borrower?.email, "EquipTrack Notification: Borrowed Equipment", `Confirmation: ${r.borrower}, you borrowed ${r.quantity} × ${r.equipmentName}. Due date: ${r.dueDate}. Please return it on time.`, d, r.id, "confirmation");
+    await sendEmail(
+      borrower?.email,
+      "EquipTrack Notification: Borrowed Equipment",
+      `Confirmation: ${r.borrower}, you borrowed ${r.quantity} × ${r.equipmentName}. Due date: ${r.dueDate}. Please return it on time.`,
+      d,
+      r.id,
+      "confirmation",
+    );
   } else {
     if (r.status !== "Borrowed")
       return res
@@ -465,14 +577,19 @@ app.patch("/api/requests/:id/status", requireStaff, async (req, res) => {
   writeDb(d);
   res.json({ ...r, overdue: overdue(r) });
 });
-app.get("/api/notifications", requireStaff, (req, res) => res.json(readDb().smsLog || []));
+app.get("/api/notifications", requireStaff, (req, res) =>
+  res.json(readDb().smsLog || []),
+);
 app.post("/api/notifications/process", requireStaff, async (_req, res) => {
   await processSmsNotifications();
   res.json({ ok: true });
 });
 app.post("/api/notifications/test", requireStaff, async (req, res) => {
   const email = req.body.email?.trim() || EMAIL_TEST_ADDRESS;
-  if (!email) return res.status(400).json({ error: "Provide an email address or set EMAIL_TEST_ADDRESS." });
+  if (!email)
+    return res
+      .status(400)
+      .json({ error: "Provide an email address or set EMAIL_TEST_ADDRESS." });
   const d = readDb();
   const entry = await sendEmail(
     email,
@@ -513,7 +630,9 @@ app.listen(PORT, () => {
       writeDb(d);
     }
   } else {
-    console.warn("Staff login is not configured. Set STAFF_EMAIL and STAFF_PASSWORD (10+ characters).");
+    console.warn(
+      "Staff login is not configured. Set STAFF_EMAIL and STAFF_PASSWORD (10+ characters).",
+    );
   }
   void processSmsNotifications();
   setInterval(() => void processSmsNotifications(), 60 * 60 * 1000);

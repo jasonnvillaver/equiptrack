@@ -1024,7 +1024,9 @@ footer i {
   justify-content: center;
   color: #f2f5fb;
   background-color: #111c30;
-  background-image: linear-gradient(#ffffff08 1px, transparent 1px), linear-gradient(90deg, #ffffff08 1px, transparent 1px);
+  background-image:
+    linear-gradient(#ffffff08 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff08 1px, transparent 1px);
   background-size: 34px 34px;
 }
 .authaside-mark {
