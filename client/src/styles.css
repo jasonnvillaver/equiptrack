@@ -1595,3 +1595,116 @@ footer i {
     flex-direction: column;
   }
 }
+.global-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 250px) auto;
+  align-items: end;
+  gap: 16px;
+  padding: 5px 19px 19px;
+}
+.setting-check,
+.setting-number {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #5f6d81;
+  font-size: 10px;
+  font-weight: 600;
+}
+.setting-check input {
+  accent-color: #3478f6;
+}
+.setting-number {
+  align-items: flex-start;
+  flex-direction: column;
+}
+.setting-number input,
+.user-role-select,
+.maintenance-status-select {
+  min-height: 34px;
+  border: 1px solid #dfe6ef;
+  border-radius: 6px;
+  background: white;
+  color: #344055;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 10px;
+}
+.setting-number input {
+  width: 100%;
+}
+.global-settings .primary {
+  min-height: 34px;
+}
+.formgrid textarea {
+  width: 100%;
+  padding: 10px;
+  resize: vertical;
+  border: 1px solid #dfe6ef;
+  border-radius: 7px;
+  background: white;
+  color: #344055;
+  font: inherit;
+  font-size: 11px;
+}
+.formgrid textarea:focus {
+  border-color: #80a9ff;
+  outline: 0;
+  box-shadow: 0 0 0 3px #eaf1ff;
+}
+.reported {
+  background: #fff4e6;
+  color: #c78325;
+}
+.scheduled {
+  background: #eaf1ff;
+  color: #3676e9;
+}
+.in-progress {
+  background: #f0eaff;
+  color: #8053ce;
+}
+.completed {
+  background: #e6f8ef;
+  color: #239a68;
+}
+.cancelled {
+  background: #f0f2f6;
+  color: #78869a;
+}
+.authsuccess {
+  margin: 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: #eaf8f0;
+  color: #218b5e;
+  font-size: 11px;
+  line-height: 1.5;
+}
+:root[data-theme="dark"] .setting-check,
+:root[data-theme="dark"] .setting-number {
+  color: #aab7ca;
+}
+:root[data-theme="dark"] .setting-number input,
+:root[data-theme="dark"] .user-role-select,
+:root[data-theme="dark"] .maintenance-status-select,
+:root[data-theme="dark"] .formgrid textarea,
+:root[data-theme="dark"] .authpanel select {
+  color: #d5deec;
+  background: #111c2c;
+  border-color: #28364b;
+}
+:root[data-theme="dark"] .formgrid textarea:focus {
+  border-color: #5e8fe5;
+  box-shadow: 0 0 0 3px #3478f633;
+}
+:root[data-theme="dark"] .authsuccess {
+  background: #173a32;
+  color: #75d1a6;
+}
+@media (max-width: 850px) {
+  .global-settings {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
