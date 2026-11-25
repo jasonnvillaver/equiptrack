@@ -257,6 +257,192 @@ button:disabled {
   right: 6px;
   top: 5px;
 }
+.notification-control {
+  position: relative;
+}
+.notification-count {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border: 1px solid white;
+  border-radius: 9px;
+  background: #e85f56;
+  color: white;
+  font-size: 8px;
+  font-weight: 700;
+}
+.notification-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(390px, calc(100vw - 24px));
+  max-height: min(70vh, 560px);
+  overflow: hidden;
+  background: white;
+  border: 1px solid #e5eaf1;
+  border-radius: 10px;
+  box-shadow: 0 15px 45px #18283f24;
+}
+.notification-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf0f5;
+}
+.notification-heading b,
+.notification-heading small {
+  display: block;
+}
+.notification-heading b {
+  color: #25334a;
+  font: 700 12px Manrope;
+}
+.notification-heading small {
+  margin-top: 4px;
+  color: #929daf;
+  font-size: 9px;
+}
+.notification-refresh {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e5eaf1;
+  border-radius: 7px;
+  background: white;
+  color: #67758a;
+}
+.notification-list {
+  max-height: calc(min(70vh, 560px) - 60px);
+  overflow-y: auto;
+}
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f2f6;
+}
+.notification-item:last-child {
+  border-bottom: 0;
+}
+.notification-item > div {
+  min-width: 0;
+  flex: 1;
+}
+.notification-item b {
+  display: block;
+  color: #3d4b61;
+  font-size: 10px;
+}
+.notification-item small {
+  display: block;
+  margin-top: 4px;
+  color: #9aa5b4;
+  font-size: 9px;
+}
+.notification-item p {
+  margin: 7px 0 0;
+  color: #69778b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.notification-status {
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 8px;
+  text-transform: capitalize;
+}
+.notification-status.sent {
+  background: #e6f8ef;
+  color: #239a68;
+}
+.notification-status.logged,
+.notification-status.skipped {
+  background: #fff4e6;
+  color: #c78325;
+}
+.notification-status.failed,
+.notification-error {
+  color: #c94d45 !important;
+}
+.notification-status.failed {
+  background: #fff0ef;
+}
+.notification-message {
+  padding: 22px 16px;
+  color: #8a95a7;
+  font-size: 10px;
+  text-align: center;
+}
+.settings-panel {
+  max-width: 760px;
+}
+.theme-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 5px 19px 19px;
+}
+.theme-description {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.theme-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eaf1ff;
+  color: #3478f6;
+}
+.theme-description b,
+.theme-description small {
+  display: block;
+}
+.theme-description b {
+  color: #3d4b61;
+  font-size: 11px;
+}
+.theme-description small {
+  margin-top: 4px;
+  color: #929daf;
+  font-size: 9px;
+}
+.theme-options {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.theme-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #69778b;
+  font-size: 10px;
+}
+.theme-options button.selected {
+  background: white;
+  color: #3478f6;
+  box-shadow: 0 1px 4px #192d481a;
+}
 .admin {
   display: grid;
   place-items: center;
@@ -1268,5 +1454,144 @@ footer i {
   .panel,
   .stat {
     break-inside: avoid;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  color: #d5deec;
+  background: #0b1220;
+}
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .authscreen,
+:root[data-theme="dark"] .authloading {
+  color: #d5deec;
+  background: #0b1220;
+}
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .stat,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .toolbar,
+:root[data-theme="dark"] .requestcards button,
+:root[data-theme="dark"] .iconbutton,
+:root[data-theme="dark"] .modal,
+:root[data-theme="dark"] .modal header button,
+:root[data-theme="dark"] .secondary,
+:root[data-theme="dark"] .notification-panel,
+:root[data-theme="dark"] .notification-refresh,
+:root[data-theme="dark"] .theme-options,
+:root[data-theme="dark"] .theme-options button,
+:root[data-theme="dark"] .authpanel input,
+:root[data-theme="dark"] .formgrid input,
+:root[data-theme="dark"] .formgrid select {
+  color: #d5deec;
+  background-color: #111c2c;
+  border-color: #28364b;
+}
+:root[data-theme="dark"] .crumb b,
+:root[data-theme="dark"] .heading h1,
+:root[data-theme="dark"] .stat strong,
+:root[data-theme="dark"] .paneltitle h2,
+:root[data-theme="dark"] td b,
+:root[data-theme="dark"] .notification-heading b,
+:root[data-theme="dark"] .notification-item b,
+:root[data-theme="dark"] .theme-description b,
+:root[data-theme="dark"] .authbrand b,
+:root[data-theme="dark"] .authpanel h1,
+:root[data-theme="dark"] .modal header h2 {
+  color: #e5ecf6;
+}
+:root[data-theme="dark"] .heading p,
+:root[data-theme="dark"] .heading small,
+:root[data-theme="dark"] .paneltitle p,
+:root[data-theme="dark"] .stat small,
+:root[data-theme="dark"] .stat em,
+:root[data-theme="dark"] td,
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] .crumb,
+:root[data-theme="dark"] .topright > span,
+:root[data-theme="dark"] .notification-heading small,
+:root[data-theme="dark"] .notification-item p,
+:root[data-theme="dark"] .notification-item small,
+:root[data-theme="dark"] .notification-message,
+:root[data-theme="dark"] .theme-description small,
+:root[data-theme="dark"] .authcopy,
+:root[data-theme="dark"] .authpanel form label {
+  color: #9baac0;
+}
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] footer,
+:root[data-theme="dark"] .notification-heading,
+:root[data-theme="dark"] .notification-item,
+:root[data-theme="dark"] .activity,
+:root[data-theme="dark"] .statuscount,
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] td {
+  border-color: #28364b;
+}
+:root[data-theme="dark"] thead,
+:root[data-theme="dark"] .search,
+:root[data-theme="dark"] .filter,
+:root[data-theme="dark"] .equipcell > span,
+:root[data-theme="dark"] .theme-options button.selected {
+  background: #18263a;
+  border-color: #2a3a51;
+}
+:root[data-theme="dark"] .search input,
+:root[data-theme="dark"] .filter select {
+  color: #d5deec;
+  background: transparent;
+}
+:root[data-theme="dark"] .theme-options button.selected {
+  color: #8bb5ff;
+  box-shadow: 0 1px 4px #0005;
+}
+:root[data-theme="dark"] .activity,
+:root[data-theme="dark"] .statuscount {
+  color: #aab7ca;
+}
+:root[data-theme="dark"] .requestcards button.selected {
+  background: #1b2c47;
+  border-color: #456a9c;
+}
+:root[data-theme="dark"] .requestcards button b,
+:root[data-theme="dark"] .barrow b {
+  color: #d5deec;
+}
+:root[data-theme="dark"] .barrow > span,
+:root[data-theme="dark"] .progress {
+  background: #29364a;
+}
+:root[data-theme="dark"] .theme-icon {
+  background: #1b2c47;
+  color: #8bb5ff;
+}
+:root[data-theme="dark"] .authpanel input::placeholder,
+:root[data-theme="dark"] .search input::placeholder {
+  color: #7f8da3;
+}
+:root[data-theme="dark"] .notification-status.sent {
+  background: #173a32;
+  color: #75d1a6;
+}
+:root[data-theme="dark"] .notification-status.logged,
+:root[data-theme="dark"] .notification-status.skipped {
+  background: #40331f;
+  color: #e3b46b;
+}
+:root[data-theme="dark"] .notification-status.failed {
+  background: #432b2e;
+  color: #f08a82 !important;
+}
+:root[data-theme="dark"] .authpanel input:focus,
+:root[data-theme="dark"] .formgrid input:focus,
+:root[data-theme="dark"] .formgrid select:focus {
+  border-color: #5e8fe5;
+  box-shadow: 0 0 0 3px #3478f633;
+}
+@media (max-width: 520px) {
+  .theme-setting {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

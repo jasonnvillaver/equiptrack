@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Package,
   Plus,
   RefreshCw,
@@ -22,6 +23,7 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  Sun,
   Users,
   X,
   XCircle,
@@ -64,6 +66,17 @@ type EmailNotification = {
   testRecipient: boolean;
   error?: string;
 };
+type NotificationRecord = {
+  id: string;
+  requestId: string | null;
+  type: string;
+  email: string | null;
+  subject: string;
+  text: string;
+  sentAt: string;
+  status: "sent" | "logged" | "failed" | "skipped";
+  error?: string;
+};
 type StatusActionResult = {
   notification?: EmailNotification;
 };
@@ -101,8 +114,12 @@ const dateText = (s: string) =>
     day: "numeric",
     year: "numeric",
   });
+function storedTheme(): "light" | "dark" {
+  return localStorage.getItem("equiptrack-theme") === "dark" ? "dark" : "light";
+}
 export default function App() {
   const [page, setPage] = useState("Dashboard"),
+    [theme, setTheme] = useState<"light" | "dark">(storedTheme),
     [authUser, setAuthUser] = useState<AuthUser | null>(null),
     [authLoading, setAuthLoading] = useState(true),
     [equipment, setEquipment] = useState<Equipment[]>([]),
@@ -115,8 +132,16 @@ export default function App() {
     [filter, setFilter] = useState("All"),
     [modal, setModal] = useState<"request" | "equipment" | null>(null),
     [saving, setSaving] = useState(false),
-    [mobile, setMobile] = useState(false);
+    [mobile, setMobile] = useState(false),
+    [notificationsOpen, setNotificationsOpen] = useState(false),
+    [notifications, setNotifications] = useState<NotificationRecord[]>([]),
+    [notificationsLoading, setNotificationsLoading] = useState(false),
+    [notificationsError, setNotificationsError] = useState("");
   const isStaff = authUser?.role === "staff";
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("equiptrack-theme", theme);
+  }, [theme]);
   const refresh = useCallback(async () => {
     setError("");
     try {
@@ -202,6 +227,24 @@ export default function App() {
         };
       },
     );
+  }
+  async function loadNotifications() {
+    setNotificationsLoading(true);
+    setNotificationsError("");
+    try {
+      setNotifications(await api<NotificationRecord[]>("/notifications"));
+    } catch (e) {
+      setNotificationsError(
+        e instanceof Error ? e.message : "Unable to load notifications.",
+      );
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }
+  async function toggleNotifications() {
+    const shouldOpen = !notificationsOpen;
+    setNotificationsOpen(shouldOpen);
+    if (shouldOpen && isStaff) await loadNotifications();
   }
   const eqRows = useMemo(
     () =>
@@ -311,7 +354,10 @@ export default function App() {
               </button>
             </div>
           )}
-          <button className="navitem">
+          <button
+            className={`navitem ${page === "Settings" ? "active" : ""}`}
+            onClick={() => go("Settings")}
+          >
             <Settings size={18} />
             Settings
           </button>
@@ -356,10 +402,81 @@ export default function App() {
                 day: "numeric",
               })}
             </span>
-            <button className="iconbutton">
-              <Bell />
-              <i />
-            </button>
+            {isStaff && (
+              <div className="notification-control">
+                <button
+                  className="iconbutton"
+                  aria-label="Notifications"
+                  aria-expanded={notificationsOpen}
+                  onClick={() => void toggleNotifications()}
+                >
+                  <Bell />
+                  {notifications.length > 0 && (
+                    <span className="notification-count">
+                      {notifications.length > 99 ? "99+" : notifications.length}
+                    </span>
+                  )}
+                </button>
+                {notificationsOpen && (
+                  <section className="notification-panel">
+                    <div className="notification-heading">
+                      <div>
+                        <b>Notifications</b>
+                        <small>Email delivery history</small>
+                      </div>
+                      <button
+                        className="notification-refresh"
+                        aria-label="Refresh notifications"
+                        onClick={() => void loadNotifications()}
+                      >
+                        <RefreshCw size={15} />
+                      </button>
+                    </div>
+                    {notificationsLoading ? (
+                      <div className="notification-message">Loading…</div>
+                    ) : notificationsError ? (
+                      <div className="notification-message notification-error">
+                        {notificationsError}
+                      </div>
+                    ) : notifications.length ? (
+                      <div className="notification-list">
+                        {notifications.slice(0, 20).map((notification) => (
+                          <article
+                            className="notification-item"
+                            key={notification.id}
+                          >
+                            <div>
+                              <b>{notification.subject}</b>
+                              <small>
+                                {notification.requestId
+                                  ? `${notification.requestId} · `
+                                  : ""}
+                                {new Date(notification.sentAt).toLocaleString()}
+                              </small>
+                              <p>{notification.text}</p>
+                              {notification.error && (
+                                <small className="notification-error">
+                                  {notification.error}
+                                </small>
+                              )}
+                            </div>
+                            <span
+                              className={`notification-status ${notification.status}`}
+                            >
+                              {notification.status}
+                            </span>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="notification-message">
+                        No email notifications yet.
+                      </div>
+                    )}
+                  </section>
+                )}
+              </div>
+            )}
             <b className="admin">{authUser.name.slice(0, 1).toUpperCase()}</b>
           </div>
         </header>
@@ -694,6 +811,55 @@ export default function App() {
                   sub="Current inventory records"
                 />
                 <EquipmentTable rows={equipment} />
+              </section>
+            </>
+          )}
+          {page === "Settings" && (
+            <>
+              <Heading
+                title="Settings"
+                sub="Adjust how EquipTrack looks on this device."
+                eyebrow="PREFERENCES"
+              />
+              <section className="panel settings-panel">
+                <PanelTitle
+                  title="Appearance"
+                  sub="Choose a theme for the EquipTrack interface."
+                />
+                <div className="theme-setting">
+                  <div className="theme-description">
+                    <span className="theme-icon">
+                      {theme === "dark" ? <Moon size={18} /> : <Sun size={18} />}
+                    </span>
+                    <div>
+                      <b>Color theme</b>
+                      <small>
+                        Your preference is saved in this browser.
+                      </small>
+                    </div>
+                  </div>
+                  <div
+                    className="theme-options"
+                    role="group"
+                    aria-label="Color theme"
+                  >
+                    {(["light", "dark"] as const).map((option) => (
+                      <button
+                        key={option}
+                        className={theme === option ? "selected" : ""}
+                        aria-pressed={theme === option}
+                        onClick={() => setTheme(option)}
+                      >
+                        {option === "light" ? (
+                          <Sun size={15} />
+                        ) : (
+                          <Moon size={15} />
+                        )}
+                        {option === "light" ? "Light" : "Dark"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </section>
             </>
           )}
