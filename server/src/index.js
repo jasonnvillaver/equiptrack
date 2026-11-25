@@ -18,20 +18,6 @@ const RESEND_FROM =
 const RESEND_TEMPLATE_ID = process.env.RESEND_TEMPLATE_ID;
 const RESEND_APPROVAL_TEMPLATE_ID = process.env.RESEND_APPROVAL_TEMPLATE_ID;
 const EMAIL_TEST_ADDRESS = process.env.EMAIL_TEST_ADDRESS;
-const SYSTEM_ADMIN_EMAIL = process.env.STAFF_EMAIL?.trim().toLowerCase();
-const USER_ROLES = [
-  "system_admin",
-  "equipment_custodian",
-  "faculty_staff",
-  "authorized_student",
-];
-const MAINTENANCE_STATUSES = [
-  "Reported",
-  "Scheduled",
-  "In Progress",
-  "Completed",
-  "Cancelled",
-];
 
 app.use(cors());
 app.use(express.json());
@@ -66,7 +52,6 @@ function userFromRow(row) {
     email: row.email,
     department: row.department,
     role: row.role,
-    approved: row.approved,
     phone: row.phone || "",
     passwordHash: row.password_hash,
   };
@@ -79,17 +64,8 @@ function publicUser(user) {
     email: user.email,
     department: user.department,
     role: user.role,
-    approved: user.approved,
     phone: user.phone || "",
   };
-}
-
-function isBorrower(user) {
-  return ["faculty_staff", "authorized_student"].includes(user.role);
-}
-
-function canManageEquipment(user) {
-  return ["system_admin", "equipment_custodian"].includes(user.role);
 }
 
 function equipmentFromRow(row) {
@@ -151,24 +127,6 @@ function activityFromRow(row) {
   };
 }
 
-function maintenanceFromRow(row) {
-  return {
-    id: row.id,
-    equipmentId: row.equipment_id,
-    equipmentName: row.equipment_name,
-    title: row.title,
-    description: row.description,
-    status: row.status,
-    notes: row.notes,
-    createdBy: row.created_by_name || "Former user",
-    createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at).toISOString(),
-    ...(row.completed_at
-      ? { completedAt: new Date(row.completed_at).toISOString() }
-      : {}),
-  };
-}
-
 function overdue(request) {
   return (
     request.status === "Borrowed" &&
@@ -202,33 +160,19 @@ const requireAuth = asyncRoute(async (req, res, next) => {
     return res.status(401).json({ error: "Please sign in to continue." });
   }
   const { rows } = await pool.query(
-    `SELECT id, name, email, department, role, approved, phone, password_hash
+    `SELECT id, name, email, department, role, phone, password_hash
      FROM users WHERE id = $1`,
     [session.userId],
   );
   if (!rows[0])
     return res.status(401).json({ error: "Please sign in to continue." });
   req.user = userFromRow(rows[0]);
-  if (!req.user.approved) {
-    sessions.delete(token);
-    return res
-      .status(403)
-      .json({ error: "Your account has not been approved by a System Admin." });
-  }
   next();
 });
 
-function requireEquipmentStaff(req, res, next) {
-  if (!canManageEquipment(req.user))
-    return res
-      .status(403)
-      .json({ error: "Equipment Custodian or System Admin access is required." });
-  next();
-}
-
-function requireSystemAdmin(req, res, next) {
-  if (req.user.role !== "system_admin")
-    return res.status(403).json({ error: "System Admin access is required." });
+function requireStaff(req, res, next) {
+  if (req.user.role !== "staff")
+    return res.status(403).json({ error: "Staff access is required." });
   next();
 }
 
@@ -394,56 +338,31 @@ app.post(
   "/api/auth/register",
   asyncRoute(async (req, res) => {
     const { name, email, department, password } = req.body;
-    const role = req.body.role || "faculty_staff";
     if (
-      typeof name !== "string" ||
-      !name.trim() ||
-      typeof email !== "string" ||
-      !email.trim() ||
-      typeof department !== "string" ||
-      !department.trim() ||
+      !name?.trim() ||
+      !email?.trim() ||
+      !department?.trim() ||
       typeof password !== "string" ||
-      password.length < 10 ||
-      !["faculty_staff", "authorized_student"].includes(role)
+      password.length < 10
     )
       return res.status(400).json({
-        error:
-          "Complete all fields, choose a valid borrower type, and use a password of at least 10 characters.",
+        error: "Complete all fields. Passwords must be at least 10 characters.",
       });
-    const approved = role !== "authorized_student";
-    if (!approved) {
-      const { rows: settings } = await pool.query(
-        "SELECT student_registration_enabled FROM system_settings WHERE id = 1",
-      );
-      if (!settings[0]?.student_registration_enabled)
-        return res.status(403).json({
-          error: "Authorized Student registration is currently disabled.",
-        });
-    }
 
     const normalizedEmail = email.trim().toLowerCase();
     try {
       const { rows } = await pool.query(
-        `INSERT INTO users
-           (id, name, email, department, role, approved, password_hash)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, name, email, department, role, approved, phone, password_hash`,
+        `INSERT INTO users (id, name, email, department, role, password_hash)
+         VALUES ($1, $2, $3, $4, 'borrower', $5)
+         RETURNING id, name, email, department, role, phone, password_hash`,
         [
           randomUUID(),
           name.trim(),
           normalizedEmail,
           department.trim(),
-          role,
-          approved,
           makePasswordHash(password),
         ],
       );
-      if (!approved)
-        return res.status(202).json({
-          pendingApproval: true,
-          message:
-            "Your account has been submitted. A System Admin must approve it before you can sign in.",
-        });
       res.status(201).json(createSession(userFromRow(rows[0])));
     } catch (error) {
       if (error?.code === "23505")
@@ -463,17 +382,13 @@ app.post(
     if (!email || typeof password !== "string")
       return res.status(400).json({ error: "Enter your email and password." });
     const { rows } = await pool.query(
-      `SELECT id, name, email, department, role, approved, phone, password_hash
+      `SELECT id, name, email, department, role, phone, password_hash
        FROM users WHERE email = $1`,
       [email],
     );
     const user = rows[0] && userFromRow(rows[0]);
     if (!user || !passwordMatches(password, user.passwordHash))
       return res.status(401).json({ error: "Email or password is incorrect." });
-    if (!user.approved)
-      return res.status(403).json({
-        error: "Your account is awaiting System Admin approval.",
-      });
     res.json(createSession(user));
   }),
 );
@@ -503,213 +418,6 @@ app.get(
 );
 
 app.get(
-  "/api/settings",
-  asyncRoute(async (_req, res) => {
-    const { rows } = await pool.query(
-      `SELECT student_registration_enabled, default_loan_days, updated_at
-       FROM system_settings WHERE id = 1`,
-    );
-    if (!rows[0]) throw new Error("System settings have not been initialized.");
-    res.json({
-      studentRegistrationEnabled: rows[0].student_registration_enabled,
-      defaultLoanDays: rows[0].default_loan_days,
-      updatedAt: new Date(rows[0].updated_at).toISOString(),
-    });
-  }),
-);
-
-app.patch(
-  "/api/settings",
-  requireSystemAdmin,
-  asyncRoute(async (req, res) => {
-    const { studentRegistrationEnabled, defaultLoanDays } = req.body;
-    if (
-      typeof studentRegistrationEnabled !== "boolean" ||
-      !Number.isInteger(defaultLoanDays) ||
-      defaultLoanDays < 1 ||
-      defaultLoanDays > 365
-    )
-      return res.status(400).json({
-        error:
-          "Student registration must be enabled or disabled, and default loan days must be between 1 and 365.",
-      });
-    const { rows } = await pool.query(
-      `UPDATE system_settings
-       SET student_registration_enabled = $1, default_loan_days = $2,
-           updated_by = $3, updated_at = NOW()
-       WHERE id = 1
-       RETURNING student_registration_enabled, default_loan_days, updated_at`,
-      [studentRegistrationEnabled, defaultLoanDays, req.user.id],
-    );
-    res.json({
-      studentRegistrationEnabled: rows[0].student_registration_enabled,
-      defaultLoanDays: rows[0].default_loan_days,
-      updatedAt: new Date(rows[0].updated_at).toISOString(),
-    });
-  }),
-);
-
-app.get(
-  "/api/users",
-  requireSystemAdmin,
-  asyncRoute(async (_req, res) => {
-    const { rows } = await pool.query(
-      `SELECT id, name, email, department, role, approved, created_at
-       FROM users ORDER BY created_at DESC`,
-    );
-    res.json(
-      rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        email: row.email,
-        department: row.department,
-        role: row.role,
-        approved: row.approved,
-        isBootstrapAdmin: row.email === SYSTEM_ADMIN_EMAIL,
-        createdAt: new Date(row.created_at).toISOString(),
-      })),
-    );
-  }),
-);
-
-app.post(
-  "/api/users",
-  requireSystemAdmin,
-  asyncRoute(async (req, res) => {
-    const { name, email, department, password, role } = req.body;
-    if (
-      typeof name !== "string" ||
-      !name.trim() ||
-      typeof email !== "string" ||
-      !email.trim() ||
-      typeof department !== "string" ||
-      !department.trim() ||
-      typeof password !== "string" ||
-      password.length < 10 ||
-      !USER_ROLES.includes(role)
-    )
-      return res.status(400).json({
-        error:
-          "Provide a name, email, department, valid role, and password of at least 10 characters.",
-      });
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO users
-           (id, name, email, department, role, approved, password_hash)
-         VALUES ($1, $2, $3, $4, $5, TRUE, $6)
-         RETURNING id, name, email, department, role, approved, created_at`,
-        [
-          randomUUID(),
-          name.trim(),
-          email.trim().toLowerCase(),
-          department.trim(),
-          role,
-          makePasswordHash(password),
-        ],
-      );
-      const user = rows[0];
-      res.status(201).json({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        department: user.department,
-        role: user.role,
-        approved: user.approved,
-        createdAt: new Date(user.created_at).toISOString(),
-      });
-    } catch (error) {
-      if (error?.code === "23505")
-        return res
-          .status(409)
-          .json({ error: "An account with that email already exists." });
-      throw error;
-    }
-  }),
-);
-
-app.patch(
-  "/api/users/:id",
-  requireSystemAdmin,
-  asyncRoute(async (req, res) => {
-    const role = req.body.role;
-    const approved = req.body.approved;
-    if (
-      (role !== undefined && !USER_ROLES.includes(role)) ||
-      (approved !== undefined && typeof approved !== "boolean") ||
-      (role === undefined && approved === undefined)
-    )
-      return res.status(400).json({ error: "Provide a valid role or approval status." });
-
-    const user = await inTransaction(async (client) => {
-      await client.query("SELECT pg_advisory_xact_lock(73421001)");
-      const { rows } = await client.query(
-        `SELECT id, name, email, department, role, approved, created_at
-         FROM users WHERE id = $1 FOR UPDATE`,
-        [req.params.id],
-      );
-      const current = rows[0];
-      if (!current) throw new HttpError(404, "User not found.");
-      const nextRole = role ?? current.role;
-      const nextApproved =
-        approved ?? (role && role !== "authorized_student" ? true : current.approved);
-      if (
-        current.email === SYSTEM_ADMIN_EMAIL &&
-        (nextRole !== "system_admin" || !nextApproved)
-      )
-        throw new HttpError(
-          400,
-          "The configured bootstrap System Admin account must remain active.",
-        );
-      if (current.id === req.user.id && nextRole !== "system_admin")
-        throw new HttpError(
-          400,
-          "Use another System Admin account to change your own role.",
-        );
-      if (!nextApproved && nextRole !== "authorized_student")
-        throw new HttpError(
-          400,
-          "Only Authorized Student accounts can be awaiting approval.",
-        );
-      if (nextRole === "system_admin" && !nextApproved)
-        throw new HttpError(400, "A System Admin account must be approved.");
-      if (
-        current.role === "system_admin" &&
-        (nextRole !== "system_admin" || !nextApproved)
-      ) {
-        const { rows: admins } = await client.query(
-          "SELECT COUNT(*)::INTEGER AS count FROM users WHERE role = 'system_admin' AND approved = TRUE",
-        );
-        if (admins[0].count <= 1)
-          throw new HttpError(
-            400,
-            "The last approved System Admin cannot be demoted or suspended.",
-          );
-      }
-      const { rows: updated } = await client.query(
-        `UPDATE users SET role = $2, approved = $3
-         WHERE id = $1
-         RETURNING id, name, email, department, role, approved, created_at`,
-        [current.id, nextRole, nextApproved],
-      );
-      await addActivity(
-        client,
-        `Updated account access for ${updated[0].email}`,
-      );
-      return updated[0];
-    });
-    res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      department: user.department,
-      role: user.role,
-      approved: user.approved,
-      createdAt: new Date(user.created_at).toISOString(),
-    });
-  }),
-);
-
-app.get(
   "/api/dashboard",
   asyncRoute(async (req, res) => {
     const [
@@ -723,12 +431,12 @@ app.get(
       ),
       pool.query(
         `SELECT * FROM requests
-         ${isBorrower(req.user) ? "WHERE borrower_user_id = $1" : ""}
+         ${req.user.role === "staff" ? "" : "WHERE borrower_user_id = $1"}
          ORDER BY created_at DESC`,
-        isBorrower(req.user) ? [req.user.id] : [],
+        req.user.role === "staff" ? [] : [req.user.id],
       ),
       pool.query("SELECT COUNT(*) AS count FROM equipment WHERE active = TRUE"),
-      !isBorrower(req.user)
+      req.user.role === "staff"
         ? pool.query("SELECT * FROM activity ORDER BY at DESC LIMIT 30")
         : Promise.resolve({ rows: [] }),
     ]);
@@ -759,7 +467,7 @@ app.get(
 
 app.post(
   "/api/equipment",
-  requireEquipmentStaff,
+  requireStaff,
   asyncRoute(async (req, res) => {
     const { name, category, location, total, condition = "Good" } = req.body;
     if (
@@ -798,7 +506,7 @@ app.post(
 
 app.put(
   "/api/equipment/:id",
-  requireEquipmentStaff,
+  requireStaff,
   asyncRoute(async (req, res) => {
     const item = await inTransaction(async (client) => {
       const { rows } = await client.query(
@@ -840,7 +548,7 @@ app.put(
 
 app.delete(
   "/api/equipment/:id",
-  requireEquipmentStaff,
+  requireStaff,
   asyncRoute(async (req, res) => {
     await inTransaction(async (client) => {
       const { rows } = await client.query(
@@ -865,133 +573,13 @@ app.delete(
 );
 
 app.get(
-  "/api/maintenance",
-  requireEquipmentStaff,
-  asyncRoute(async (_req, res) => {
-    const { rows } = await pool.query(
-      `SELECT m.*, e.name AS equipment_name, u.name AS created_by_name
-       FROM maintenance_records m
-       JOIN equipment e ON e.id = m.equipment_id
-       LEFT JOIN users u ON u.id = m.created_by
-       ORDER BY m.created_at DESC`,
-    );
-    res.json(rows.map(maintenanceFromRow));
-  }),
-);
-
-app.post(
-  "/api/maintenance",
-  requireEquipmentStaff,
-  asyncRoute(async (req, res) => {
-    const { equipmentId, title, description = "" } = req.body;
-    if (
-      typeof equipmentId !== "string" ||
-      !equipmentId ||
-      !title?.trim() ||
-      typeof description !== "string"
-    )
-      return res.status(400).json({
-        error: "Select equipment and provide a maintenance title.",
-      });
-    const record = await inTransaction(async (client) => {
-      const { rows: equipmentRows } = await client.query(
-        "SELECT id, name FROM equipment WHERE id = $1 AND active = TRUE",
-        [equipmentId],
-      );
-      if (!equipmentRows[0])
-        throw new HttpError(404, "Active equipment not found.");
-      const { rows } = await client.query(
-        `INSERT INTO maintenance_records
-           (id, equipment_id, title, description, status, created_by)
-         VALUES ($1, $2, $3, $4, 'Reported', $5)
-         RETURNING *`,
-        [
-          randomUUID(),
-          equipmentId,
-          title.trim(),
-          description.trim(),
-          req.user.id,
-        ],
-      );
-      await addActivity(
-        client,
-        `Maintenance reported for ${equipmentRows[0].name}: ${title.trim()}`,
-      );
-      return {
-        ...rows[0],
-        equipment_name: equipmentRows[0].name,
-        created_by_name: req.user.name,
-      };
-    });
-    res.status(201).json(maintenanceFromRow(record));
-  }),
-);
-
-app.patch(
-  "/api/maintenance/:id",
-  requireEquipmentStaff,
-  asyncRoute(async (req, res) => {
-    const { status, notes } = req.body;
-    if (
-      !MAINTENANCE_STATUSES.includes(status) ||
-      (notes !== undefined && typeof notes !== "string")
-    )
-      return res.status(400).json({
-        error: "Provide a valid maintenance status and optional notes.",
-      });
-    const record = await inTransaction(async (client) => {
-      const { rows } = await client.query(
-        `SELECT m.*, e.name AS equipment_name, u.name AS created_by_name
-         FROM maintenance_records m
-         JOIN equipment e ON e.id = m.equipment_id
-         LEFT JOIN users u ON u.id = m.created_by
-         WHERE m.id = $1 FOR UPDATE OF m`,
-        [req.params.id],
-      );
-      const current = rows[0];
-      if (!current) throw new HttpError(404, "Maintenance record not found.");
-      const transitions = {
-        Reported: ["Scheduled", "In Progress", "Cancelled"],
-        Scheduled: ["In Progress", "Cancelled"],
-        "In Progress": ["Completed", "Cancelled"],
-        Completed: [],
-        Cancelled: [],
-      };
-      if (!transitions[current.status].includes(status))
-        throw new HttpError(
-          400,
-          `Maintenance cannot move from ${current.status} to ${status}.`,
-        );
-      const { rows: updated } = await client.query(
-        `UPDATE maintenance_records
-         SET status = $2, notes = COALESCE($3, notes), updated_at = NOW(),
-             completed_at = CASE WHEN $2 = 'Completed' THEN NOW() ELSE NULL END
-         WHERE id = $1
-         RETURNING *`,
-        [current.id, status, notes ?? null],
-      );
-      await addActivity(
-        client,
-        `Maintenance ${current.id} changed to ${status}`,
-      );
-      return {
-        ...updated[0],
-        equipment_name: current.equipment_name,
-        created_by_name: current.created_by_name,
-      };
-    });
-    res.json(maintenanceFromRow(record));
-  }),
-);
-
-app.get(
   "/api/requests",
   asyncRoute(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT * FROM requests
-       ${isBorrower(req.user) ? "WHERE borrower_user_id = $1" : ""}
+       ${req.user.role === "staff" ? "" : "WHERE borrower_user_id = $1"}
        ORDER BY created_at DESC`,
-      isBorrower(req.user) ? [req.user.id] : [],
+      req.user.role === "staff" ? [] : [req.user.id],
     );
     res.json(rows.map((row) => ({ ...requestFromRow(row), overdue: overdue(requestFromRow(row)) })));
   }),
@@ -1012,9 +600,8 @@ app.post(
     } = req.body;
     const staffBorrowerEmail =
       typeof borrowerEmail === "string" ? borrowerEmail.trim() : "";
-    const borrowerAccount = isBorrower(req.user);
     if (
-      (!borrowerAccount &&
+      (req.user.role === "staff" &&
         (!borrower?.trim() || !department?.trim() || !staffBorrowerEmail)) ||
       !equipmentId ||
       !purpose?.trim() ||
@@ -1023,7 +610,7 @@ app.post(
     )
       return res.status(400).json({ error: "Complete all request fields." });
     if (
-      !borrowerAccount &&
+      req.user.role === "staff" &&
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(staffBorrowerEmail)
     )
       return res
@@ -1055,12 +642,14 @@ app.post(
       const id = await nextRequestId(client);
       const requestData = {
         id,
-        borrower: borrowerAccount ? req.user.name : borrower.trim(),
+        borrower: req.user.role === "borrower" ? req.user.name : borrower.trim(),
         department:
-          borrowerAccount ? req.user.department : department.trim(),
-        borrowerUserId: borrowerAccount ? req.user.id : null,
+          req.user.role === "borrower"
+            ? req.user.department
+            : department.trim(),
+        borrowerUserId: req.user.role === "borrower" ? req.user.id : null,
         borrowerEmail:
-          borrowerAccount ? null : staffBorrowerEmail.toLowerCase(),
+          req.user.role === "staff" ? staffBorrowerEmail.toLowerCase() : null,
         equipmentId,
         equipmentName: item.name,
         quantity: qty,
@@ -1100,7 +689,7 @@ app.post(
 
 app.patch(
   "/api/requests/:id/status",
-  requireEquipmentStaff,
+  requireStaff,
   asyncRoute(async (req, res) => {
     const status = req.body.status;
     const allowed = ["Approved", "Rejected", "Borrowed", "Returned"];
@@ -1239,7 +828,7 @@ app.patch(
 
 app.get(
   "/api/notifications",
-  requireEquipmentStaff,
+  requireStaff,
   asyncRoute(async (_req, res) => {
     const { rows } = await pool.query(
       "SELECT * FROM notifications ORDER BY sent_at DESC LIMIT 300",
@@ -1250,7 +839,7 @@ app.get(
 
 app.post(
   "/api/notifications/process",
-  requireEquipmentStaff,
+  requireStaff,
   asyncRoute(async (_req, res) => {
     await processSmsNotifications();
     res.json({ ok: true });
@@ -1259,7 +848,7 @@ app.post(
 
 app.post(
   "/api/notifications/test",
-  requireEquipmentStaff,
+  requireStaff,
   asyncRoute(async (req, res) => {
     const email = req.body.email?.trim() || EMAIL_TEST_ADDRESS;
     if (!email)
@@ -1297,9 +886,8 @@ async function start() {
     const email = process.env.STAFF_EMAIL.trim().toLowerCase();
     await pool.query(
       `INSERT INTO users (id, name, email, department, role, password_hash)
-       VALUES ($1, $2, $3, 'Equipment Services', 'system_admin', $4)
-       ON CONFLICT (email) DO UPDATE
-       SET role = 'system_admin', approved = TRUE`,
+       VALUES ($1, $2, $3, 'Equipment Services', 'staff', $4)
+       ON CONFLICT (email) DO NOTHING`,
       [
         randomUUID(),
         process.env.STAFF_NAME?.trim() || "EquipTrack Staff",
@@ -1309,7 +897,7 @@ async function start() {
     );
   } else {
     console.warn(
-      "System Admin login is not configured. Set STAFF_EMAIL and STAFF_PASSWORD (10+ characters).",
+      "Staff login is not configured. Set STAFF_EMAIL and STAFF_PASSWORD (10+ characters).",
     );
   }
   app.listen(PORT, () => {

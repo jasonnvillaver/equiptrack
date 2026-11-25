@@ -44,31 +44,31 @@ The importer refuses to write unless the target contains only the initial seeded
 
 Keep production on `main` and its existing services. To test this branch remotely, use a separate Render staging service set to `feature/dynamic-database` and point only that service at the staging Supabase database.
 
-Provision the initial System Admin account through server environment variables before starting the API:
+Provision the staff account through server environment variables before starting the API:
 
 ```sh
-export STAFF_EMAIL="admin@example.edu"
+export STAFF_EMAIL="staff@example.edu"
 export STAFF_PASSWORD="use-a-long-unique-password"
-export STAFF_NAME="System Admin"
+export STAFF_NAME="Equipment Staff"
 npm run dev
 ```
 
-Then open the Vite URL printed by the client. The configured account is promoted to System Admin at startup. System Admins can create Equipment Custodian and other accounts in Settings.
+Then open the Vite URL printed by the client. Staff/admin is one role. Borrowers can register from the sign-in screen and cannot select a staff role.
 
 ## Access roles
 
-- **System Admin:** full system access, user and role management, Authorized Student approvals, and global settings.
-- **Equipment Custodian:** manage equipment and maintenance records, view and process all borrowing requests, and view reports.
-- **Faculty & Staff:** browse equipment, submit borrowing requests, and view only their own requests and dashboard totals.
-- **Authorized Student:** the same borrower functions after a System Admin approves the account. Student self-registration can be enabled or disabled in System Settings.
-
-The System Admin Settings page controls Authorized Student self-registration and the default loan duration. The duration is used to prefill new requests; borrowers can select a different due date. Appearance preferences are saved in the current browser.
-
-Equipment Custodians and System Admins can create maintenance records and advance them from Reported to Scheduled or In Progress, then to Completed or Cancelled. Maintenance records track work but do not change inventory availability.
+- **Staff / Admin:** manage equipment, view all borrowing requests, approve or reject requests, release equipment, process returns, and view reports.
+- **Borrower:** browse equipment, submit borrowing requests, and view only their own requests and dashboard totals.
 
 The API enforces these permissions independently of the client UI. Passwords are stored as salted scrypt hashes in PostgreSQL. Session tokens expire after 12 hours and are held in server memory, so restarting the API signs users out. Application records persist in the configured PostgreSQL database.
 
 The migration enables RLS on the application tables and removes direct `anon`/`authenticated` table and sequence grants. The browser must access data through the EquipTrack API; keep `DATABASE_URL` private in the server environment.
+
+### Rolling back roles and maintenance from production
+
+Back up the production database before proceeding. To return to the staff/borrower application, first run `server/rollback/prepare_legacy_roles.sql` in the production Supabase SQL Editor. Then merge the code rollback and wait for Render to deploy it. Finally run `server/rollback/rollback_roles_maintenance.sql` in the same production project.
+
+The final SQL removes maintenance records and system settings, maps System Admin/Equipment Custodian accounts to `staff`, maps Faculty & Staff/Authorized Student accounts to `borrower`, and removes the `approved` column. It preserves user records, password hashes, equipment, requests, notifications, and activity. Do not run these scripts against staging by mistake.
 
 ## Resend email testing
 
