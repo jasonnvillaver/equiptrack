@@ -709,6 +709,49 @@ app.patch(
   }),
 );
 
+app.delete(
+  "/api/users/:id",
+  requireSystemAdmin,
+  asyncRoute(async (req, res) => {
+    const user = await inTransaction(async (client) => {
+      await client.query("SELECT pg_advisory_xact_lock(73421001)");
+      const { rows } = await client.query(
+        `SELECT id, email, role, approved
+         FROM users WHERE id = $1 FOR UPDATE`,
+        [req.params.id],
+      );
+      const current = rows[0];
+      if (!current) throw new HttpError(404, "User not found.");
+      if (current.id === req.user.id)
+        throw new HttpError(400, "You cannot delete your own account.");
+      if (current.email === SYSTEM_ADMIN_EMAIL)
+        throw new HttpError(
+          400,
+          "The configured bootstrap System Admin account cannot be deleted.",
+        );
+      if (current.role === "system_admin" && current.approved) {
+        const { rows: admins } = await client.query(
+          "SELECT COUNT(*)::INTEGER AS count FROM users WHERE role = 'system_admin' AND approved = TRUE",
+        );
+        if (admins[0].count <= 1)
+          throw new HttpError(
+            400,
+            "The last approved System Admin cannot be deleted.",
+          );
+      }
+
+      await addActivity(client, `Deleted user account: ${current.email}`);
+      await client.query("DELETE FROM users WHERE id = $1", [current.id]);
+      return current;
+    });
+    res.json({
+      ok: true,
+      id: user.id,
+      message: "User account deleted. Historical records are retained.",
+    });
+  }),
+);
+
 app.get(
   "/api/dashboard",
   asyncRoute(async (req, res) => {

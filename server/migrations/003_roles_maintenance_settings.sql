@@ -5,8 +5,12 @@ ALTER TABLE public.users
   DROP CONSTRAINT IF EXISTS users_role_check;
 
 UPDATE public.users
-SET role = 'equipment_custodian'
-WHERE role = 'staff';
+SET role = CASE
+  WHEN role = 'staff' THEN 'equipment_custodian'
+  WHEN role = 'borrower' THEN 'faculty_staff'
+  ELSE role
+END
+WHERE role IN ('staff', 'borrower');
 
 ALTER TABLE public.users
   ADD CONSTRAINT users_role_check

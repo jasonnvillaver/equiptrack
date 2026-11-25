@@ -42,7 +42,7 @@ npm run db:import-legacy --prefix server -- --confirm-import
 
 The importer refuses to write unless the target contains only the initial seeded equipment and no requests. It logs counts only, not borrower data. Never point `LEGACY_IMPORT_DATABASE_URL` at staging or share these credentials.
 
-Keep production on `main` and its existing services. To test this branch remotely, use a separate Render staging service set to `feature/dynamic-database` and point only that service at the staging Supabase database.
+Keep production on `main` and its existing services. To test a feature branch remotely, use a separate Render staging service set to that branch and point only that service at the staging Supabase database.
 
 Provision the initial System Admin account through server environment variables before starting the API:
 
@@ -55,6 +55,12 @@ npm run dev
 
 Then open the Vite URL printed by the client. The configured account is promoted to System Admin at startup. System Admins can create Equipment Custodian and other accounts in Settings.
 
+When upgrading a legacy database, existing `staff` accounts are migrated to Equipment Custodian and `borrower` accounts to Faculty & Staff. At startup, the account matching `STAFF_EMAIL` is promoted to System Admin; if it already exists, its password hash is preserved. No additional custodian account is created automatically.
+
+### Deploying roles and maintenance
+
+Back up the target database first. For an existing deployment, apply `server/migrations/003_roles_maintenance_settings.sql` to the same production database used by the API before deploying this version; API startup requires the `approved` column. In Supabase, run the migration in the production project's SQL Editor. After deployment, sign in with the configured `STAFF_EMAIL` account and create any separate Equipment Custodian account from Settings. Updating `STAFF_PASSWORD` does not reset an existing account's password hash.
+
 ## Access roles
 
 - **System Admin:** full system access, user and role management, Authorized Student approvals, and global settings.
@@ -65,6 +71,8 @@ Then open the Vite URL printed by the client. The configured account is promoted
 The System Admin Settings page controls Authorized Student self-registration and the default loan duration. The duration is used to prefill new requests; borrowers can select a different due date. Appearance preferences are saved in the current browser.
 
 Equipment Custodians and System Admins can create maintenance records and advance them from Reported to Scheduled or In Progress, then to Completed or Cancelled. Maintenance records track work but do not change inventory availability.
+
+System Admins can create accounts, assign roles, approve Authorized Students, and delete other accounts. The signed-in account, configured bootstrap admin, and last approved System Admin are protected from deletion. Deleting a user preserves historical requests while clearing their linked user ID.
 
 The API enforces these permissions independently of the client UI. Passwords are stored as salted scrypt hashes in PostgreSQL. Session tokens expire after 12 hours and are held in server memory, so restarting the API signs users out. Application records persist in the configured PostgreSQL database.
 

@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sun,
+  Trash2,
   UserPlus,
   Users,
   Wrench,
@@ -380,6 +381,13 @@ export default function App() {
           body: JSON.stringify(change),
         }),
       "User access updated.",
+    );
+    if (success) await loadUsers();
+  }
+  async function deleteUser(id: string) {
+    const success = await act(
+      () => api(`/users/${id}`, { method: "DELETE" }),
+      "User account deleted. Historical records were retained.",
     );
     if (success) await loadUsers();
   }
@@ -1101,6 +1109,16 @@ export default function App() {
                         onApproval={(id, approved) =>
                           void updateUser(id, { approved })
                         }
+                        onDelete={(id) => {
+                          const user = users.find((row) => row.id === id);
+                          if (
+                            user &&
+                            confirm(
+                              `Delete ${user.name}'s account? Historical records will be retained.`,
+                            )
+                          )
+                            void deleteUser(id);
+                        }}
                       />
                     )}
                   </section>
@@ -1739,11 +1757,13 @@ function UserTable({
   currentUserId,
   onRole,
   onApproval,
+  onDelete,
 }: {
   rows: UserRecord[];
   currentUserId: string;
   onRole: (id: string, role: UserRole) => void;
   onApproval: (id: string, approved: boolean) => void;
+  onDelete: (id: string) => void;
 }) {
   if (!rows.length) return <Empty text="No user accounts found." />;
   return (
@@ -1792,16 +1812,29 @@ function UserTable({
                 </label>
               </td>
               <td>
-                {user.role === "authorized_student" && !user.approved ? (
+                {user.role === "authorized_student" && !user.approved && (
                   <button
                     className="approve"
                     onClick={() => onApproval(user.id, true)}
                   >
                     Approve
                   </button>
-                ) : (
-                  <span className="dim">—</span>
                 )}
+                <button
+                  className="delete"
+                  disabled={user.isBootstrapAdmin || user.id === currentUserId}
+                  title={
+                    user.isBootstrapAdmin
+                      ? "The bootstrap System Admin account cannot be deleted."
+                      : user.id === currentUserId
+                        ? "You cannot delete your own account."
+                        : "Delete account"
+                  }
+                  aria-label={`Delete account for ${user.name}`}
+                  onClick={() => onDelete(user.id)}
+                >
+                  <Trash2 size={14} /> Delete
+                </button>
               </td>
             </tr>
           ))}
